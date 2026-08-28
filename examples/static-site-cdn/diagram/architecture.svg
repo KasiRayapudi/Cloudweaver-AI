@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="778.0" height="470.0" viewBox="0 0 778.0 470.0" role="img" aria-label="Cloud architecture diagram for host-static-website-dev">
+
+  <style>
+    .bg { fill: #ffffff; }
+    .node { stroke-width: 1.5; }
+    .label { font: 600 13px 'Segoe UI', system-ui, sans-serif; }
+    .sublabel { font: 400 10.5px 'Segoe UI', system-ui, sans-serif; opacity: .78; }
+    .badge { font: 700 9px 'Segoe UI', system-ui, sans-serif; fill: #ffffff; }
+    .title { font: 700 17px 'Segoe UI', system-ui, sans-serif; fill: #1b2430; }
+    .subtitle { font: 400 11.5px 'Segoe UI', system-ui, sans-serif; fill: #64748b; }
+    .band { font: 600 10px 'Segoe UI', system-ui, sans-serif; fill: #94a3b8;
+             letter-spacing: .08em; }
+    .group-box { fill: none; stroke: #94a3b8; stroke-width: 1.4; stroke-dasharray: 7 5; }
+    .group-label { font: 600 11px 'Segoe UI', system-ui, sans-serif; fill: #64748b; }
+    .edge { fill: none; stroke: #7c8ea3; stroke-width: 1.6; }
+    .edge.data { stroke: #3f9c5f; }
+    .edge.dep { stroke: #b0bccb; }
+    .edge-label { font: 400 9.5px 'Segoe UI', system-ui, sans-serif; fill: #8194a8; }
+    .implied { stroke-dasharray: 5 3; }
+    .fill-internet { fill: #eef2f7; stroke: #8fa3b8; }
+    .text-internet { fill: #41536b; }
+    .badge-internet { fill: #8fa3b8; }
+    .fill-traffic { fill: #e8f1fd; stroke: #4a86d8; }
+    .text-traffic { fill: #1c4b8f; }
+    .badge-traffic { fill: #4a86d8; }
+    .fill-compute { fill: #fdf0e6; stroke: #e08b3c; }
+    .text-compute { fill: #8a4c11; }
+    .badge-compute { fill: #e08b3c; }
+    .fill-data { fill: #eaf5ee; stroke: #3f9c5f; }
+    .text-data { fill: #1d5c33; }
+    .badge-data { fill: #3f9c5f; }
+    .fill-storage { fill: #f0edfb; stroke: #7b62d4; }
+    .text-storage { fill: #3f2f8a; }
+    .badge-storage { fill: #7b62d4; }
+    .fill-integration { fill: #fdf2f7; stroke: #c8558f; }
+    .text-integration { fill: #7c2c53; }
+    .badge-integration { fill: #c8558f; }
+    .fill-security { fill: #fdecec; stroke: #d9534f; }
+    .text-security { fill: #8c2b28; }
+    .badge-security { fill: #d9534f; }
+    .fill-network { fill: #eef2f7; stroke: #7d8fa5; }
+    .text-network { fill: #3f4f63; }
+    .badge-network { fill: #7d8fa5; }
+    .fill-ops { fill: #f5f2e8; stroke: #a58a3c; }
+    .text-ops { fill: #5d4c17; }
+    .badge-ops { fill: #a58a3c; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0f141b; }
+      .title { fill: #e6edf5; }
+      .subtitle { fill: #93a3b6; }
+      .band { fill: #6b7c91; }
+      .group-box { stroke: #47566a; }
+      .group-label { fill: #93a3b6; }
+      .edge { stroke: #63768c; }
+      .edge.dep { stroke: #3c4a5c; }
+      .edge-label { fill: #7b8da2; }
+      .fill-internet { fill: #232a33; stroke: #6d7f93; }
+      .text-internet { fill: #c6d2e0; }
+      .badge-internet { fill: #6d7f93; }
+      .fill-traffic { fill: #182634; stroke: #4a86d8; }
+      .text-traffic { fill: #a9cbf5; }
+      .badge-traffic { fill: #4a86d8; }
+      .fill-compute { fill: #2d2318; stroke: #e08b3c; }
+      .text-compute { fill: #f0c294; }
+      .badge-compute { fill: #e08b3c; }
+      .fill-data { fill: #182a1f; stroke: #3f9c5f; }
+      .text-data { fill: #a4d9b6; }
+      .badge-data { fill: #3f9c5f; }
+      .fill-storage { fill: #221d33; stroke: #7b62d4; }
+      .text-storage { fill: #c3b6f0; }
+      .badge-storage { fill: #7b62d4; }
+      .fill-integration { fill: #2d1c26; stroke: #c8558f; }
+      .text-integration { fill: #f0aecd; }
+      .badge-integration { fill: #c8558f; }
+      .fill-security { fill: #2e1b1b; stroke: #d9534f; }
+      .text-security { fill: #f2a9a7; }
+      .badge-security { fill: #d9534f; }
+      .fill-network { fill: #232a33; stroke: #7d8fa5; }
+      .text-network { fill: #c1ccd9; }
+      .badge-network { fill: #7d8fa5; }
+      .fill-ops { fill: #2a2617; stroke: #a58a3c; }
+      .text-ops { fill: #ded0a2; }
+      .badge-ops { fill: #a58a3c; }
+    }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c8ea3"/>
+    </marker>
+    <marker id="arrow-data" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3f9c5f"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="778.0" height="470.0" rx="8"/>
+  <text class="title" x="20" y="28">host-static-website-dev</text>
+  <text class="subtitle" x="20" y="45">AWS - us-east-1 - dev</text>
+  <text class="band" x="18" y="254.0">GLOBAL / EDGE</text>
+  <text class="band" x="18" y="400.0">DATA LAYER</text>
+  <path class="edge" d="M 418.0 138.0 L 418.0 177.0 L 225.0 177.0 L 225.0 216.0" marker-end="url(#arrow)"/>
+  <path class="edge" d="M 418.0 138.0 L 418.0 177.0 L 649.0 177.0 L 649.0 216.0" marker-end="url(#arrow)"/>
+  <path class="edge" d="M 418.0 138.0 L 418.0 177.0 L 437.0 177.0 L 437.0 216.0" marker-end="url(#arrow)"/>
+  <path class="edge" d="M 225.0 284.0 L 225.0 323.0 L 437.0 323.0 L 437.0 362.0" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="443.0" y="319.0">origin</text>
+  <path class="edge dep" d="M 560.0 250.0 L 314.0 250.0" stroke-dasharray="2 5" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="320.0" y="246.0">inspects</text>
+  <path class="edge" d="M 348.0 250.0 L 314.0 250.0" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="320.0" y="246.0">alias</text>
+  <g><title>Internet</title>
+    <rect class="node fill-internet" x="348.0" y="86.0" width="140.0" height="52.0" rx="10"/>
+    <text class="label text-internet" x="362.0" y="112.0">Internet</text>
+    <text class="sublabel text-internet" x="362.0" y="134.0">public traffic</text>
+  </g>
+  <g><title>origin=assets; origin_type=s3</title>
+    <rect class="node fill-traffic" x="136.0" y="216.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-traffic" x="148.0" y="228.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="165.0" y="240.0" text-anchor="middle">CDN</text>
+    <text class="label text-traffic" x="190.0" y="242.0">CloudFront</text>
+    <text class="sublabel text-traffic" x="150.0" y="264.0">cdn</text>
+  </g>
+  <g><title>scope=CLOUDFRONT</title>
+    <rect class="node fill-security" x="560.0" y="216.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-security" x="572.0" y="228.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="589.0" y="240.0" text-anchor="middle">WAF</text>
+    <text class="label text-security" x="614.0" y="242.0">WAF Web ACL</text>
+    <text class="sublabel text-security" x="574.0" y="264.0">waf</text>
+  </g>
+  <g><title>alias_target=cdn</title>
+    <rect class="node fill-traffic" x="348.0" y="216.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-traffic" x="360.0" y="228.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="377.0" y="240.0" text-anchor="middle">DNS</text>
+    <text class="label text-traffic" x="402.0" y="242.0">Route 53 Zone</text>
+    <text class="sublabel text-traffic" x="362.0" y="264.0">dns zone</text>
+  </g>
+  <g><title>versioning=False; encrypted=True; public_read=False; cdn_fronted=True</title>
+    <rect class="node fill-storage" x="348.0" y="362.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-storage" x="360.0" y="374.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="377.0" y="386.0" text-anchor="middle">S3</text>
+    <text class="label text-storage" x="402.0" y="388.0">S3 Bucket</text>
+    <text class="sublabel text-storage" x="362.0" y="410.0">assets</text>
+  </g>
+</svg>

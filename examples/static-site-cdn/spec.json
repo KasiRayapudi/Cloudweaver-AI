@@ -1,0 +1,101 @@
+{
+  "generator": "ai-infra-iac-generator",
+  "prompt": "Host a static website in an S3 bucket served through CloudFront with a Route 53 custom domain and a WAF in front of it.",
+  "summary": "dev environment in us-east-1: CloudFront, WAF Web ACL, Route 53 Zone, S3 Bucket.",
+  "spec": {
+    "name": "host-static-website-dev",
+    "provider": "aws",
+    "region": "us-east-1",
+    "environment": "dev",
+    "prompt": "Host a static website in an S3 bucket served through CloudFront with a Route 53 custom domain and a WAF in front of it.",
+    "summary": "dev environment in us-east-1: CloudFront, WAF Web ACL, Route 53 Zone, S3 Bucket.",
+    "high_availability": false,
+    "availability_zones": 2,
+    "resources": [
+      {
+        "id": "cdn",
+        "kind": "cdn",
+        "name": "CloudFront",
+        "tier": "edge",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "origin": "assets",
+          "origin_type": "s3"
+        },
+        "confidence": 0.65,
+        "evidence": "...n an s3 bucket served through cloudfront with a route 53 custom domain..."
+      },
+      {
+        "id": "waf",
+        "kind": "waf",
+        "name": "WAF Web ACL",
+        "tier": "edge",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "scope": "CLOUDFRONT"
+        },
+        "confidence": 0.65,
+        "evidence": "...route 53 custom domain and a waf in front of it."
+      },
+      {
+        "id": "dns_zone",
+        "kind": "dns_zone",
+        "name": "Route 53 Zone",
+        "tier": "global",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "alias_target": "cdn"
+        },
+        "confidence": 0.7,
+        "evidence": "...gh cloudfront with a route 53 custom domain and a waf in front of it."
+      },
+      {
+        "id": "assets",
+        "kind": "object_storage",
+        "name": "S3 Bucket",
+        "tier": "data",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "versioning": false,
+          "encrypted": true,
+          "public_read": false,
+          "cdn_fronted": true
+        },
+        "confidence": 0.7,
+        "evidence": "host a static website in an s3 bucket served throug..."
+      }
+    ],
+    "edges": [
+      {
+        "source": "cdn",
+        "target": "assets",
+        "kind": "traffic",
+        "label": "origin"
+      },
+      {
+        "source": "waf",
+        "target": "cdn",
+        "kind": "depends",
+        "label": "inspects"
+      },
+      {
+        "source": "dns_zone",
+        "target": "cdn",
+        "kind": "traffic",
+        "label": "alias"
+      }
+    ],
+    "assumptions": [
+      "No region stated; defaulting to us-east-1.",
+      "The bucket is kept private and served through CloudFront using origin access control."
+    ],
+    "warnings": [],
+    "extractor": "rule"
+  },
+  "findings": [],
+  "estimated_monthly_cost_usd": 6.0
+}

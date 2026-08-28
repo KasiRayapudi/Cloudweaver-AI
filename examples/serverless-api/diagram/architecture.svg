@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="804" height="616.0" viewBox="0 0 804 616.0" role="img" aria-label="Cloud architecture diagram for serverless-rest-api-dev">
+
+  <style>
+    .bg { fill: #ffffff; }
+    .node { stroke-width: 1.5; }
+    .label { font: 600 13px 'Segoe UI', system-ui, sans-serif; }
+    .sublabel { font: 400 10.5px 'Segoe UI', system-ui, sans-serif; opacity: .78; }
+    .badge { font: 700 9px 'Segoe UI', system-ui, sans-serif; fill: #ffffff; }
+    .title { font: 700 17px 'Segoe UI', system-ui, sans-serif; fill: #1b2430; }
+    .subtitle { font: 400 11.5px 'Segoe UI', system-ui, sans-serif; fill: #64748b; }
+    .band { font: 600 10px 'Segoe UI', system-ui, sans-serif; fill: #94a3b8;
+             letter-spacing: .08em; }
+    .group-box { fill: none; stroke: #94a3b8; stroke-width: 1.4; stroke-dasharray: 7 5; }
+    .group-label { font: 600 11px 'Segoe UI', system-ui, sans-serif; fill: #64748b; }
+    .edge { fill: none; stroke: #7c8ea3; stroke-width: 1.6; }
+    .edge.data { stroke: #3f9c5f; }
+    .edge.dep { stroke: #b0bccb; }
+    .edge-label { font: 400 9.5px 'Segoe UI', system-ui, sans-serif; fill: #8194a8; }
+    .implied { stroke-dasharray: 5 3; }
+    .fill-internet { fill: #eef2f7; stroke: #8fa3b8; }
+    .text-internet { fill: #41536b; }
+    .badge-internet { fill: #8fa3b8; }
+    .fill-traffic { fill: #e8f1fd; stroke: #4a86d8; }
+    .text-traffic { fill: #1c4b8f; }
+    .badge-traffic { fill: #4a86d8; }
+    .fill-compute { fill: #fdf0e6; stroke: #e08b3c; }
+    .text-compute { fill: #8a4c11; }
+    .badge-compute { fill: #e08b3c; }
+    .fill-data { fill: #eaf5ee; stroke: #3f9c5f; }
+    .text-data { fill: #1d5c33; }
+    .badge-data { fill: #3f9c5f; }
+    .fill-storage { fill: #f0edfb; stroke: #7b62d4; }
+    .text-storage { fill: #3f2f8a; }
+    .badge-storage { fill: #7b62d4; }
+    .fill-integration { fill: #fdf2f7; stroke: #c8558f; }
+    .text-integration { fill: #7c2c53; }
+    .badge-integration { fill: #c8558f; }
+    .fill-security { fill: #fdecec; stroke: #d9534f; }
+    .text-security { fill: #8c2b28; }
+    .badge-security { fill: #d9534f; }
+    .fill-network { fill: #eef2f7; stroke: #7d8fa5; }
+    .text-network { fill: #3f4f63; }
+    .badge-network { fill: #7d8fa5; }
+    .fill-ops { fill: #f5f2e8; stroke: #a58a3c; }
+    .text-ops { fill: #5d4c17; }
+    .badge-ops { fill: #a58a3c; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0f141b; }
+      .title { fill: #e6edf5; }
+      .subtitle { fill: #93a3b6; }
+      .band { fill: #6b7c91; }
+      .group-box { stroke: #47566a; }
+      .group-label { fill: #93a3b6; }
+      .edge { stroke: #63768c; }
+      .edge.dep { stroke: #3c4a5c; }
+      .edge-label { fill: #7b8da2; }
+      .fill-internet { fill: #232a33; stroke: #6d7f93; }
+      .text-internet { fill: #c6d2e0; }
+      .badge-internet { fill: #6d7f93; }
+      .fill-traffic { fill: #182634; stroke: #4a86d8; }
+      .text-traffic { fill: #a9cbf5; }
+      .badge-traffic { fill: #4a86d8; }
+      .fill-compute { fill: #2d2318; stroke: #e08b3c; }
+      .text-compute { fill: #f0c294; }
+      .badge-compute { fill: #e08b3c; }
+      .fill-data { fill: #182a1f; stroke: #3f9c5f; }
+      .text-data { fill: #a4d9b6; }
+      .badge-data { fill: #3f9c5f; }
+      .fill-storage { fill: #221d33; stroke: #7b62d4; }
+      .text-storage { fill: #c3b6f0; }
+      .badge-storage { fill: #7b62d4; }
+      .fill-integration { fill: #2d1c26; stroke: #c8558f; }
+      .text-integration { fill: #f0aecd; }
+      .badge-integration { fill: #c8558f; }
+      .fill-security { fill: #2e1b1b; stroke: #d9534f; }
+      .text-security { fill: #f2a9a7; }
+      .badge-security { fill: #d9534f; }
+      .fill-network { fill: #232a33; stroke: #7d8fa5; }
+      .text-network { fill: #c1ccd9; }
+      .badge-network { fill: #7d8fa5; }
+      .fill-ops { fill: #2a2617; stroke: #a58a3c; }
+      .text-ops { fill: #ded0a2; }
+      .badge-ops { fill: #a58a3c; }
+    }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c8ea3"/>
+    </marker>
+    <marker id="arrow-data" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3f9c5f"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="804" height="616.0" rx="8"/>
+  <text class="title" x="20" y="28">serverless-rest-api-dev</text>
+  <text class="subtitle" x="20" y="45">AWS - ap-south-1 - dev</text>
+  <rect class="group-box" x="568.0" y="56.0" width="196.0" height="100.0" rx="12"/>
+  <text class="group-label" x="580.0" y="73.0">Cross-cutting - applied across the stack</text>
+  <text class="band" x="18" y="400.0">PRIVATE SUBNETS</text>
+  <text class="band" x="18" y="254.0">GLOBAL / EDGE</text>
+  <text class="band" x="18" y="546.0">DATA LAYER</text>
+  <path class="edge" d="M 312.0 138.0 L 312.0 177.0 L 331.0 177.0 L 331.0 216.0" marker-end="url(#arrow)"/>
+  <path class="edge" d="M 331.0 284.0 L 331.0 323.0 L 225.0 323.0 L 225.0 362.0" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="231.0" y="319.0">invokes</text>
+  <path class="edge data" d="M 225.0 430.0 L 225.0 469.0 L 331.0 469.0 L 331.0 508.0" stroke-dasharray="6 4" marker-end="url(#arrow-data)"/>
+  <text class="edge-label" x="337.0" y="465.0">reads/writes</text>
+  <path class="edge data" d="M 314.0 396.0 L 348.0 396.0" stroke-dasharray="6 4" marker-end="url(#arrow-data)"/>
+  <text class="edge-label" x="354.0" y="392.0">enqueues</text>
+  <path class="edge" d="M 348.0 396.0 L 314.0 396.0" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="320.0" y="392.0">triggers</text>
+  <g><title>Internet</title>
+    <rect class="node fill-internet" x="242.0" y="86.0" width="140.0" height="52.0" rx="10"/>
+    <text class="label text-internet" x="256.0" y="112.0">Internet</text>
+    <text class="sublabel text-internet" x="256.0" y="134.0">public traffic</text>
+  </g>
+  <g><title>runtime=python3.12; memory_size=512; timeout=30</title>
+    <rect class="node fill-compute" x="136.0" y="362.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-compute" x="148.0" y="374.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="165.0" y="386.0" text-anchor="middle">FN</text>
+    <text class="label text-compute" x="190.0" y="388.0">Lambda Function</text>
+    <text class="sublabel text-compute" x="150.0" y="410.0">python3.12</text>
+  </g>
+  <g><title>integration=lambda</title>
+    <rect class="node fill-traffic" x="242.0" y="216.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-traffic" x="254.0" y="228.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="271.0" y="240.0" text-anchor="middle">API</text>
+    <text class="label text-traffic" x="296.0" y="242.0">API Gateway</text>
+    <text class="sublabel text-traffic" x="256.0" y="264.0">api gateway</text>
+  </g>
+  <g><title>billing_mode=PAY_PER_REQUEST; hash_key=id; point_in_time_recovery=False</title>
+    <rect class="node fill-data" x="242.0" y="508.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-data" x="254.0" y="520.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="271.0" y="532.0" text-anchor="middle">DDB</text>
+    <text class="label text-data" x="296.0" y="534.0">DynamoDB Table</text>
+    <text class="sublabel text-data" x="256.0" y="556.0">PAY_PER_REQUEST</text>
+  </g>
+  <g><title>SQS Queue</title>
+    <rect class="node fill-integration" x="348.0" y="362.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-integration" x="360.0" y="374.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="377.0" y="386.0" text-anchor="middle">SQS</text>
+    <text class="label text-integration" x="402.0" y="388.0">SQS Queue</text>
+    <text class="sublabel text-integration" x="362.0" y="410.0">work queue</text>
+  </g>
+  <g><title>service=lambda.amazonaws.com</title>
+    <rect class="node fill-security implied" x="582.0" y="86.0" width="168.0" height="56.0" rx="10"/>
+    <rect class="badge-security" x="594.0" y="98.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="611.0" y="110.0" text-anchor="middle">IAM</text>
+    <text class="label text-security" x="636.0" y="112.0">IAM Role</text>
+    <text class="sublabel text-security" x="596.0" y="134.0">lambda role</text>
+  </g>
+</svg>

@@ -1,0 +1,26 @@
+flowchart TD
+  subgraph edge["Edge & Global"]
+    direction LR
+    cdn["CloudFront"]
+    waf["WAF Web ACL"]
+    dns_zone["Route 53 Zone"]
+  end
+  subgraph data["Data Layer"]
+    direction LR
+    assets["S3 Bucket"]
+  end
+  cdn -->|origin| assets
+  waf -.- cdn
+  dns_zone -->|alias| cdn
+  classDef compute fill:#fdf0e6,stroke:#e08b3c,color:#8a4c11;
+  classDef traffic fill:#e8f1fd,stroke:#4a86d8,color:#1c4b8f;
+  classDef data fill:#eaf5ee,stroke:#3f9c5f,color:#1d5c33;
+  classDef storage fill:#f0edfb,stroke:#7b62d4,color:#3f2f8a;
+  classDef security fill:#fdecec,stroke:#d9534f,color:#8c2b28;
+  classDef integration fill:#fdf2f7,stroke:#c8558f,color:#7c2c53;
+  classDef network fill:#eef2f7,stroke:#7d8fa5,color:#3f4f63;
+  classDef ops fill:#f5f2e8,stroke:#a58a3c,color:#5d4c17;
+  class cdn traffic;
+  class waf security;
+  class dns_zone traffic;
+  class assets storage;

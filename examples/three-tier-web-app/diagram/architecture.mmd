@@ -1,0 +1,64 @@
+flowchart TD
+  subgraph public["Public Subnets"]
+    direction LR
+    alb["Application Load Balancer"]
+    nat["NAT Gateway x3"]
+    app_tg["Target Group"]
+  end
+  subgraph app["Private Subnets"]
+    direction LR
+    app_asg["Auto Scaling Group"]
+  end
+  subgraph data["Data Layer"]
+    direction LR
+    app_db["RDS Instance"]
+    app_cache["ElastiCache Redis"]
+    assets["S3 Bucket"]
+  end
+  subgraph sec["Security & Ops"]
+    direction LR
+    alb_sg["Security Group"]
+    app_sg["Security Group"]
+    db_sg["Security Group"]
+    cache_sg["Security Group"]
+    instance_role["IAM Role"]
+    db_secret["Secrets Manager"]
+    monitoring["CloudWatch"]
+  end
+  nat -->|egress| igw
+  alb_sg -.- alb
+  app_sg -.- app_asg
+  db_sg -.- app_db
+  cache_sg -.- app_cache
+  alb -->|forwards| app_tg
+  app_tg -->|targets| app_asg
+  app_asg -.-> app_db
+  app_asg -.-> app_cache
+  app_asg -.-> assets
+  instance_role -.- app_asg
+  db_secret -.- app_db
+  app_asg -.-> db_secret
+  monitoring -.- app_asg
+  monitoring -.- app_db
+  classDef compute fill:#fdf0e6,stroke:#e08b3c,color:#8a4c11;
+  classDef traffic fill:#e8f1fd,stroke:#4a86d8,color:#1c4b8f;
+  classDef data fill:#eaf5ee,stroke:#3f9c5f,color:#1d5c33;
+  classDef storage fill:#f0edfb,stroke:#7b62d4,color:#3f2f8a;
+  classDef security fill:#fdecec,stroke:#d9534f,color:#8c2b28;
+  classDef integration fill:#fdf2f7,stroke:#c8558f,color:#7c2c53;
+  classDef network fill:#eef2f7,stroke:#7d8fa5,color:#3f4f63;
+  classDef ops fill:#f5f2e8,stroke:#a58a3c,color:#5d4c17;
+  class alb traffic;
+  class nat network;
+  class app_tg traffic;
+  class app_asg compute;
+  class app_db data;
+  class app_cache data;
+  class assets storage;
+  class alb_sg security;
+  class app_sg security;
+  class db_sg security;
+  class cache_sg security;
+  class instance_role security;
+  class db_secret security;
+  class monitoring ops;

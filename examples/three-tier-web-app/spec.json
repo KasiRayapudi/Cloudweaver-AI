@@ -1,0 +1,447 @@
+{
+  "generator": "ai-infra-iac-generator",
+  "prompt": "I need a production three-tier web app in eu-west-1: an auto scaling group of EC2 instances behind an application load balancer, a Multi-AZ PostgreSQL database, a Redis cache and an S3 bucket for uploads. Highly available.",
+  "summary": "prod environment in eu-west-1 with multi-AZ high availability: Application Load Balancer, Auto Scaling Group, RDS Instance, ElastiCache Redis, S3 Bucket.",
+  "spec": {
+    "name": "production-three-tier-prod",
+    "provider": "aws",
+    "region": "eu-west-1",
+    "environment": "prod",
+    "prompt": "I need a production three-tier web app in eu-west-1: an auto scaling group of EC2 instances behind an application load balancer, a Multi-AZ PostgreSQL database, a Redis cache and an S3 bucket for uploads. Highly available.",
+    "summary": "prod environment in eu-west-1 with multi-AZ high availability: Application Load Balancer, Auto Scaling Group, RDS Instance, ElastiCache Redis, S3 Bucket.",
+    "high_availability": true,
+    "availability_zones": 3,
+    "resources": [
+      {
+        "id": "alb",
+        "kind": "load_balancer",
+        "name": "Application Load Balancer",
+        "tier": "public",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "internal": false,
+          "listener_port": 80,
+          "scheme": "internet-facing",
+          "subnet_band": "public"
+        },
+        "confidence": 0.75,
+        "evidence": "...up of ec2 instances behind an application load balancer a multi-az postgresql databas..."
+      },
+      {
+        "id": "app_asg",
+        "kind": "autoscaling_group",
+        "name": "Auto Scaling Group",
+        "tier": "app",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "instance_type": "t3.medium",
+          "min_size": 2,
+          "max_size": 6,
+          "desired_capacity": 2,
+          "subnet_band": "private"
+        },
+        "confidence": 0.75,
+        "evidence": "...-tier web app in eu-west-1 an auto scaling group of ec2 instances behind an ap..."
+      },
+      {
+        "id": "app_db",
+        "kind": "sql_database",
+        "name": "RDS Instance",
+        "tier": "data",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "engine": "postgres",
+          "engine_version": "15.5",
+          "instance_class": "db.t3.medium",
+          "allocated_storage": 20,
+          "multi_az": true,
+          "backup_retention_period": 7,
+          "storage_encrypted": true,
+          "port": 5432,
+          "subnet_band": "private"
+        },
+        "confidence": 0.7,
+        "evidence": "...tion load balancer a multi-az postgresql database a redis cache and an s3 bucke..."
+      },
+      {
+        "id": "app_cache",
+        "kind": "cache",
+        "name": "ElastiCache Redis",
+        "tier": "data",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "node_type": "cache.t3.micro",
+          "num_nodes": 2,
+          "subnet_band": "private"
+        },
+        "confidence": 0.65,
+        "evidence": "...ulti-az postgresql database a redis cache and an s3 bucket for up..."
+      },
+      {
+        "id": "assets",
+        "kind": "object_storage",
+        "name": "S3 Bucket",
+        "tier": "data",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "versioning": true,
+          "encrypted": true,
+          "public_read": false
+        },
+        "confidence": 0.7,
+        "evidence": "...database a redis cache and an s3 bucket for uploads. highly available..."
+      },
+      {
+        "id": "main",
+        "kind": "vpc",
+        "name": "VPC",
+        "tier": "network",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "cidr_block": "10.0.0.0/16",
+          "enable_dns_hostnames": true
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "public",
+        "kind": "subnet_public",
+        "name": "Public Subnets",
+        "tier": "network",
+        "origin": "implied",
+        "count": 3,
+        "properties": {
+          "cidr_prefix": "10.0.{}.0/24",
+          "offset": 1,
+          "map_public_ip": true
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "private",
+        "kind": "subnet_private",
+        "name": "Private Subnets",
+        "tier": "network",
+        "origin": "implied",
+        "count": 3,
+        "properties": {
+          "cidr_prefix": "10.0.{}.0/24",
+          "offset": 11,
+          "map_public_ip": false
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "igw",
+        "kind": "internet_gateway",
+        "name": "Internet Gateway",
+        "tier": "network",
+        "origin": "implied",
+        "count": 1,
+        "properties": {},
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "public_rt",
+        "kind": "route_table",
+        "name": "Public Route Table",
+        "tier": "network",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "scope": "public"
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "nat",
+        "kind": "nat_gateway",
+        "name": "NAT Gateway",
+        "tier": "public",
+        "origin": "implied",
+        "count": 3,
+        "properties": {
+          "subnet_band": "public"
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "private_rt",
+        "kind": "route_table",
+        "name": "Private Route Table",
+        "tier": "network",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "scope": "private"
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "alb_sg",
+        "kind": "security_group",
+        "name": "ALB Security Group",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "ingress_from": "0.0.0.0/0",
+          "ingress_ports": [
+            80,
+            443
+          ],
+          "purpose": "load-balancer"
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "app_sg",
+        "kind": "security_group",
+        "name": "App Security Group",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "ingress_from": "alb_sg",
+          "ingress_ports": [
+            80,
+            8080
+          ],
+          "purpose": "application"
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "db_sg",
+        "kind": "security_group",
+        "name": "Database Security Group",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "ingress_from": "app_sg",
+          "ingress_ports": [
+            5432
+          ],
+          "purpose": "database"
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "cache_sg",
+        "kind": "security_group",
+        "name": "Cache Security Group",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "ingress_from": "app_sg",
+          "ingress_ports": [
+            6379
+          ],
+          "purpose": "cache"
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "app_tg",
+        "kind": "target_group",
+        "name": "Target Group",
+        "tier": "public",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "port": 80,
+          "protocol": "HTTP",
+          "health_check_path": "/health"
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "instance_role",
+        "kind": "iam_role",
+        "name": "EC2 Instance Role",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "service": "ec2.amazonaws.com"
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "db_secret",
+        "kind": "secret_store",
+        "name": "DB Credentials",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "description": "Master credentials for the managed database"
+        },
+        "confidence": 1.0,
+        "evidence": null
+      },
+      {
+        "id": "monitoring",
+        "kind": "monitoring",
+        "name": "CloudWatch Alarms",
+        "tier": "ops",
+        "origin": "implied",
+        "count": 1,
+        "properties": {},
+        "confidence": 1.0,
+        "evidence": null
+      }
+    ],
+    "edges": [
+      {
+        "source": "main",
+        "target": "private",
+        "kind": "contains",
+        "label": null
+      },
+      {
+        "source": "main",
+        "target": "public",
+        "kind": "contains",
+        "label": null
+      },
+      {
+        "source": "igw",
+        "target": "main",
+        "kind": "contains",
+        "label": "attached to"
+      },
+      {
+        "source": "nat",
+        "target": "igw",
+        "kind": "traffic",
+        "label": "egress"
+      },
+      {
+        "source": "alb_sg",
+        "target": "alb",
+        "kind": "depends",
+        "label": "protects"
+      },
+      {
+        "source": "app_sg",
+        "target": "app_asg",
+        "kind": "depends",
+        "label": "protects"
+      },
+      {
+        "source": "db_sg",
+        "target": "app_db",
+        "kind": "depends",
+        "label": "protects"
+      },
+      {
+        "source": "cache_sg",
+        "target": "app_cache",
+        "kind": "depends",
+        "label": "protects"
+      },
+      {
+        "source": "alb",
+        "target": "app_tg",
+        "kind": "traffic",
+        "label": "forwards"
+      },
+      {
+        "source": "app_tg",
+        "target": "app_asg",
+        "kind": "traffic",
+        "label": "targets"
+      },
+      {
+        "source": "app_asg",
+        "target": "app_db",
+        "kind": "data",
+        "label": "queries"
+      },
+      {
+        "source": "app_asg",
+        "target": "app_cache",
+        "kind": "data",
+        "label": "caches"
+      },
+      {
+        "source": "app_asg",
+        "target": "assets",
+        "kind": "data",
+        "label": "objects"
+      },
+      {
+        "source": "instance_role",
+        "target": "app_asg",
+        "kind": "depends",
+        "label": "assumed by"
+      },
+      {
+        "source": "db_secret",
+        "target": "app_db",
+        "kind": "depends",
+        "label": "credentials"
+      },
+      {
+        "source": "app_asg",
+        "target": "db_secret",
+        "kind": "data",
+        "label": "reads"
+      },
+      {
+        "source": "monitoring",
+        "target": "app_asg",
+        "kind": "depends",
+        "label": "watches"
+      },
+      {
+        "source": "monitoring",
+        "target": "app_db",
+        "kind": "depends",
+        "label": "watches"
+      }
+    ],
+    "assumptions": [
+      "The EC2 instances described are the auto scaling group's members, so they are generated as a launch template rather than standalone hosts.",
+      "Added a VPC (10.0.0.0/16) to host the workload.",
+      "Subnets are spread across 3 availability zones.",
+      "Added a NAT gateway so private workloads have outbound internet access.",
+      "One NAT gateway per AZ (3 total) for high availability.",
+      "Database credentials are stored in Secrets Manager, not in the code.",
+      "Production environment: CloudWatch alarms added for compute and database."
+    ],
+    "warnings": [],
+    "extractor": "rule"
+  },
+  "findings": [
+    {
+      "severity": "info",
+      "code": "nat_cost",
+      "message": "3 NAT gateways cost roughly $99/month before data transfer. One NAT gateway is cheaper if you can accept AZ-level risk.",
+      "resource_id": "nat"
+    }
+  ],
+  "estimated_monthly_cost_usd": 180.0
+}

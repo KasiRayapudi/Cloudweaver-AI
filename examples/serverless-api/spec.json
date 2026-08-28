@@ -1,0 +1,121 @@
+{
+  "generator": "ai-infra-iac-generator",
+  "prompt": "A serverless REST API: API Gateway in front of a Python Lambda function that reads and writes a DynamoDB table, with an SQS queue for background jobs. Development environment in ap-south-1.",
+  "summary": "dev environment in ap-south-1: Lambda Function, API Gateway, DynamoDB Table, SQS Queue.",
+  "spec": {
+    "name": "serverless-rest-api-dev",
+    "provider": "aws",
+    "region": "ap-south-1",
+    "environment": "dev",
+    "prompt": "A serverless REST API: API Gateway in front of a Python Lambda function that reads and writes a DynamoDB table, with an SQS queue for background jobs. Development environment in ap-south-1.",
+    "summary": "dev environment in ap-south-1: Lambda Function, API Gateway, DynamoDB Table, SQS Queue.",
+    "high_availability": false,
+    "availability_zones": 2,
+    "resources": [
+      {
+        "id": "lambda_fn",
+        "kind": "function",
+        "name": "Lambda Function",
+        "tier": "app",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "runtime": "python3.12",
+          "memory_size": 512,
+          "timeout": 30
+        },
+        "confidence": 0.7,
+        "evidence": "...gateway in front of a python lambda function that reads and writes a dynam..."
+      },
+      {
+        "id": "api_gateway",
+        "kind": "api_gateway",
+        "name": "API Gateway",
+        "tier": "edge",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "integration": "lambda"
+        },
+        "confidence": 0.7,
+        "evidence": "a serverless rest api api gateway in front of a python lambda f..."
+      },
+      {
+        "id": "app_table",
+        "kind": "nosql_table",
+        "name": "DynamoDB Table",
+        "tier": "data",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "billing_mode": "PAY_PER_REQUEST",
+          "hash_key": "id",
+          "point_in_time_recovery": false
+        },
+        "confidence": 0.7,
+        "evidence": "...ction that reads and writes a dynamodb table with an sqs queue for backgro..."
+      },
+      {
+        "id": "work_queue",
+        "kind": "queue",
+        "name": "SQS Queue",
+        "tier": "app",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {},
+        "confidence": 0.7,
+        "evidence": "...ites a dynamodb table with an sqs queue for background jobs. developm..."
+      },
+      {
+        "id": "lambda_role",
+        "kind": "iam_role",
+        "name": "Lambda Execution Role",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "service": "lambda.amazonaws.com"
+        },
+        "confidence": 1.0,
+        "evidence": null
+      }
+    ],
+    "edges": [
+      {
+        "source": "api_gateway",
+        "target": "lambda_fn",
+        "kind": "traffic",
+        "label": "invokes"
+      },
+      {
+        "source": "lambda_fn",
+        "target": "app_table",
+        "kind": "data",
+        "label": "reads/writes"
+      },
+      {
+        "source": "lambda_fn",
+        "target": "work_queue",
+        "kind": "data",
+        "label": "enqueues"
+      },
+      {
+        "source": "work_queue",
+        "target": "lambda_fn",
+        "kind": "traffic",
+        "label": "triggers"
+      },
+      {
+        "source": "lambda_role",
+        "target": "lambda_fn",
+        "kind": "depends",
+        "label": "assumed by"
+      }
+    ],
+    "assumptions": [],
+    "warnings": [],
+    "extractor": "rule"
+  },
+  "findings": [],
+  "estimated_monthly_cost_usd": 3.0
+}

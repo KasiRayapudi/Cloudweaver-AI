@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI-Driven Infrastructure Diagram & IaC Generator</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#9729;</text></svg>">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div>
+        <h1>Infrastructure Diagram &amp; IaC Generator</h1>
+        <p>Describe what you need. Get an architecture diagram and matching Terraform from one shared model.</p>
+      </div>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+  </header>
+
+  <main>
+    <section class="composer" aria-label="Requirement">
+      <label class="sr-only" for="prompt">Infrastructure requirement</label>
+      <textarea id="prompt" rows="4" spellcheck="false"
+        placeholder="e.g. A production web app in eu-west-1: an auto scaling group of EC2 instances behind an application load balancer, a Multi-AZ PostgreSQL database, a Redis cache and an S3 bucket for uploads. Highly available."></textarea>
+
+      <div class="composer-row">
+        <div class="examples" id="examples" aria-label="Example requirements"></div>
+        <div class="actions">
+          <label class="toggle" title="The LLM backend needs ANTHROPIC_API_KEY; the rule engine runs offline.">
+            <input type="checkbox" id="use-llm">
+            <span>Use LLM extraction</span>
+          </label>
+          <button id="generate" class="primary">Generate</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="empty" class="empty">
+      <p>Nothing generated yet. Describe your infrastructure above, or pick an example.</p>
+    </section>
+
+    <section id="results" class="results" hidden>
+      <div class="summary" id="summary"></div>
+
+      <nav class="tabs" role="tablist">
+        <button role="tab" class="tab active" data-tab="diagram">Diagram</button>
+        <button role="tab" class="tab" data-tab="terraform">Terraform</button>
+        <button role="tab" class="tab" data-tab="findings">Findings <span class="pill" id="findings-count"></span></button>
+        <button role="tab" class="tab" data-tab="spec">Shared model</button>
+      </nav>
+
+      <div class="panel" id="panel-diagram" role="tabpanel">
+        <div class="panel-bar">
+          <div class="seg" role="group" aria-label="Diagram format">
+            <button class="seg-btn active" data-view="svg">Rendered</button>
+            <button class="seg-btn" data-view="mermaid">Mermaid</button>
+          </div>
+          <div class="spacer"></div>
+          <button class="ghost" id="zoom-out" title="Zoom out">&minus;</button>
+          <button class="ghost" id="zoom-in" title="Zoom in">+</button>
+          <button class="ghost" id="download-svg">Save SVG</button>
+        </div>
+        <div class="diagram-stage" id="diagram-stage"></div>
+        <pre class="code" id="mermaid-code" hidden></pre>
+      </div>
+
+      <div class="panel" id="panel-terraform" role="tabpanel" hidden>
+        <div class="panel-bar">
+          <span class="hint" id="file-hint"></span>
+          <div class="spacer"></div>
+          <button class="ghost" id="copy-file">Copy file</button>
+          <button class="primary small" id="download-zip">Download project</button>
+        </div>
+        <div class="code-split">
+          <ul class="file-list" id="file-list"></ul>
+          <pre class="code" id="file-content"></pre>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-findings" role="tabpanel" hidden>
+        <ul class="findings" id="findings"></ul>
+        <div class="assumption-block">
+          <h3>Assumptions made</h3>
+          <ul id="assumptions"></ul>
+        </div>
+      </div>
+
+      <div class="panel" id="panel-spec" role="tabpanel" hidden>
+        <p class="hint padded">
+          This is the single representation both outputs are generated from &mdash; the
+          diagram and the Terraform cannot disagree, because neither reads your text directly.
+        </p>
+        <div class="code-split">
+          <ul class="resource-list" id="resource-list"></ul>
+          <pre class="code" id="spec-json"></pre>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Offline rule-based NLP by default &middot; optional Claude extraction &middot; Terraform for AWS</span>
+    <a href="/docs">API docs</a>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
