@@ -68,6 +68,7 @@ class Kind(str, Enum):
     WAF = "waf"
     # --- data -----------------------------------------------------------
     SQL_DATABASE = "sql_database"
+    SQL_CLUSTER = "sql_cluster"
     NOSQL_TABLE = "nosql_table"
     CACHE = "cache"
     OBJECT_STORAGE = "object_storage"
@@ -156,6 +157,24 @@ class Edge(BaseModel):
         return self
 
 
+class Exclusion(BaseModel):
+    """A service the user explicitly ruled out.
+
+    Recorded rather than discarded so the design can show what it deliberately
+    does *not* contain, and so a later inference stage cannot quietly add back
+    something the user refused.
+    """
+
+    kind: Kind
+    phrase: str = Field(..., description="The service phrase that was matched")
+    cue: str = Field(..., description="The word that negated it, e.g. 'without'")
+    evidence: str = Field(..., description="Surrounding text from the prompt")
+
+    @property
+    def reason(self) -> str:
+        return f"Excluded: the requirement says {self.cue!r} before {self.phrase!r}."
+
+
 class InfrastructureSpec(BaseModel):
     """The shared source of truth for the diagram and the IaC output."""
 
@@ -180,6 +199,10 @@ class InfrastructureSpec(BaseModel):
     edges: list[Edge] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    exclusions: list[Exclusion] = Field(
+        default_factory=list,
+        description="Services the requirement explicitly ruled out.",
+    )
     extractor: str = "rule"
 
     # -- lookup helpers used throughout the generators -------------------
@@ -224,6 +247,15 @@ class InfrastructureSpec(BaseModel):
             if e.source == source and e.target == target and e.kind == kind:
                 return
         self.edges.append(Edge(source=source, target=target, kind=kind, label=label))
+
+    def exclude(self, exclusion: Exclusion) -> None:
+        """Record a refusal, keeping the first cue seen for a given kind."""
+        if any(e.kind is exclusion.kind for e in self.exclusions):
+            return
+        self.exclusions.append(exclusion)
+
+    def is_excluded(self, kind: Kind) -> bool:
+        return any(e.kind is kind for e in self.exclusions)
 
     def note(self, message: str) -> None:
         if message not in self.assumptions:

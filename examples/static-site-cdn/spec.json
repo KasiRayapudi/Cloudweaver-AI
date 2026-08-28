@@ -3,7 +3,7 @@
   "prompt": "Host a static website in an S3 bucket served through CloudFront with a Route 53 custom domain and a WAF in front of it.",
   "summary": "dev environment in us-east-1: CloudFront, WAF Web ACL, Route 53 Zone, S3 Bucket.",
   "spec": {
-    "name": "host-static-website-dev",
+    "name": "host-static-website",
     "provider": "aws",
     "region": "us-east-1",
     "environment": "dev",
@@ -98,6 +98,7 @@
       "The bucket is kept private and served through CloudFront using origin access control."
     ],
     "warnings": [],
+    "exclusions": [],
     "extractor": "rule"
   },
   "findings": [],

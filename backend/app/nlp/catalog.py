@@ -99,6 +99,9 @@ AWS_CATALOG: dict[Kind, ServiceInfo] = {
     Kind.SQL_DATABASE: ServiceInfo(
         Kind.SQL_DATABASE, "RDS Instance", "aws_db_instance", Tier.DATA, "data", "RDS"
     ),
+    Kind.SQL_CLUSTER: ServiceInfo(
+        Kind.SQL_CLUSTER, "Aurora Cluster", "aws_rds_cluster", Tier.DATA, "data", "AUR"
+    ),
     Kind.NOSQL_TABLE: ServiceInfo(
         Kind.NOSQL_TABLE, "DynamoDB Table", "aws_dynamodb_table", Tier.DATA, "data", "DDB"
     ),
@@ -219,9 +222,13 @@ LEXICON: tuple[LexEntry, ...] = (
              ("ec2 instance", "ec2", "virtual machine", "web server", "app server",
               "application server", "compute instance", "backend server", "server", "vm"),
              "app_server"),
+    LexEntry(Kind.SQL_CLUSTER,
+             ("aurora postgresql", "aurora postgres", "aurora mysql",
+              "aurora serverless", "aurora cluster", "aurora"),
+             "app_db_cluster"),
     LexEntry(Kind.SQL_DATABASE,
-             ("aurora postgresql", "aurora mysql", "postgresql database", "postgres database",
-              "mysql database", "aurora", "rds", "postgresql", "postgres", "mysql",
+             ("postgresql database", "postgres database",
+              "mysql database", "rds", "postgresql", "postgres", "mysql",
               "mariadb", "sql server", "relational database", "sql database", "database", "db"),
              "app_db"),
     LexEntry(Kind.NOSQL_TABLE,
@@ -329,6 +336,63 @@ AUTOSCALING_TRIGGERS: tuple[str, ...] = (
     "auto scaling", "autoscaling", "auto-scaling", "scale automatically",
     "scales automatically", "scale out", "elastic scaling",
     "high availability", "highly available", "high-availability",
+)
+
+# Words that turn a service mention into a refusal. Ordered longest first so
+# "do not need" is reported rather than the bare "not" inside it.
+NEGATION_CUES: tuple[str, ...] = (
+    "no need for", "do not need", "dont need", "don't need", "not required",
+    "rather than", "instead of", "as well as not",
+    "without", "excluding", "exclude", "except", "omit", "omitting",
+    "avoid", "skip", "no", "not",
+)
+
+# Words that defer a service to some later time. "maybe add a database later"
+# is not a request for a database today.
+HEDGE_CUES: tuple[str, ...] = (
+    "in the future", "in future", "down the line", "at some point",
+    "next phase", "phase two", "phase 2", "later on", "later",
+    "eventually", "someday", "maybe", "perhaps", "possibly", "might add",
+    "might want", "consider adding", "thinking about", "not yet",
+)
+
+# Cues that read naturally *after* the service: "a database in the future",
+# "a cache is not needed". Deliberately a small list -- a general backward cue
+# like "no" would wrongly negate "a database and no cache" when scanned
+# forwards, so only unambiguous trailing forms appear here.
+POSTFIX_CUES: tuple[str, ...] = (
+    "in the future", "in future", "down the line", "at some point",
+    "next phase", "phase two", "phase 2", "later", "eventually", "someday",
+    "is not needed", "not needed", "not required", "not yet", "is optional",
+    "can wait", "would be nice",
+)
+
+# A forward scan stops at these: what follows is a different service.
+POSTFIX_BOUNDARIES: tuple[str, ...] = (" and ", " with ", " plus ", " or ", ". ")
+
+# How far forward a trailing cue may sit.
+POSTFIX_WINDOW = 26
+
+# "no single point of failure" is an availability requirement, not a refusal
+# of whatever service happens to follow it.
+NEGATION_EXEMPTIONS: tuple[str, ...] = (
+    "no single point of failure", "no downtime", "no data loss",
+    "no public access", "no public ip", "no outbound", "no internet access",
+)
+
+# How far back a cue may sit and still govern the phrase. Deliberately short:
+# a cue three clauses away is describing something else.
+NEGATION_WINDOW = 28
+
+# Cutting the window here stops a refusal leaking across a contrast, so that
+# "no database but a web server" does not also drop the web server.
+# "for now" and "just" are the common way of saying "the deferral ended, here
+# is what I actually want today", so they reset a hedge the same way "but"
+# resets a negation.
+CLAUSE_BOUNDARIES: tuple[str, ...] = (
+    " but ", " however ", " although ", ". ",
+    " for now ", " for the moment ", " right now ", " currently ",
+    " initially ", " to start ", " just ", " only ", " instead ",
 )
 
 # Phrases that mean the workload should sit in private subnets.

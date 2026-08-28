@@ -3,7 +3,7 @@
   "prompt": "Create a development environment in us-east-1 with one Ubuntu EC2 instance inside a VPC. Add an Internet Gateway, Security Group allowing SSH and HTTP, IAM role, and Elastic IP.",
   "summary": "dev environment in us-east-1: Internet Gateway, EC2 Instance, VPC, Security Group, Elastic IP, IAM Role.",
   "spec": {
-    "name": "development-environment-in-dev",
+    "name": "development-env-2c4973",
     "provider": "aws",
     "region": "us-east-1",
     "environment": "dev",
@@ -228,6 +228,7 @@
       "Route Table: The public subnet needs a route table with a default route."
     ],
     "warnings": [],
+    "exclusions": [],
     "extractor": "rule"
   },
   "findings": [

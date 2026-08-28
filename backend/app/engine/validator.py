@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Literal
 
+from app.engine.constraints import check as check_constraints
 from app.engine.policy import PRIVATE_EGRESS_CONSUMERS
 from app.models.ir import EdgeKind, InfrastructureSpec, Kind
 
@@ -35,6 +36,7 @@ MONTHLY_COST_HINTS: dict[Kind, float] = {
     Kind.NAT_GATEWAY: 33.0,
     Kind.LOAD_BALANCER: 18.0,
     Kind.SQL_DATABASE: 25.0,
+    Kind.SQL_CLUSTER: 90.0,
     Kind.CACHE: 13.0,
     Kind.KUBERNETES_CLUSTER: 73.0,
     Kind.CONTAINER_SERVICE: 15.0,
@@ -67,7 +69,17 @@ class SpecValidator:
         findings += self._security(spec)
         findings += self._reliability(spec)
         findings += self._cost(spec)
+        findings += self._aws_constraints(spec)
         return findings
+
+    # -- AWS API constraints ----------------------------------------------
+
+    def _aws_constraints(self, spec: InfrastructureSpec) -> list[Finding]:
+        """Rules the AWS API enforces that `terraform validate` cannot see."""
+        return [
+            Finding(severity, code, message)  # type: ignore[arg-type]
+            for severity, code, message in check_constraints(spec)
+        ]
 
     # -- network correctness ----------------------------------------------
 

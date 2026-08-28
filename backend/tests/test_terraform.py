@@ -147,7 +147,9 @@ def test_serverless_project_has_no_vpc(serverless):
 
 def test_database_password_is_never_hardcoded(three_tier):
     text = hcl_text(three_tier.terraform)
-    assert "random_password.db.result" in text
+    # The password resource is named per database so two databases cannot
+    # silently share one credential.
+    assert re.search(r"random_password\.\w+_password\.result", text)
     assert re.search(r'password\s*=\s*"', text) is None
 
 

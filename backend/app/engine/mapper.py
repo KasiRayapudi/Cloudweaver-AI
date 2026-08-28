@@ -57,6 +57,7 @@ COMPUTE: frozenset[Kind] = frozenset({
 # Backends application compute talks to, and the verb for the diagram edge.
 BACKEND_LABELS: dict[Kind, str] = {
     Kind.SQL_DATABASE: "queries",
+    Kind.SQL_CLUSTER: "queries",
     Kind.NOSQL_TABLE: "reads/writes",
     Kind.CACHE: "caches",
     Kind.OBJECT_STORAGE: "objects",
@@ -80,7 +81,7 @@ PUBLIC_BAND: frozenset[Kind] = frozenset({
 
 # Resources that must never sit in a public subnet.
 PRIVATE_BAND: frozenset[Kind] = frozenset({
-    Kind.SQL_DATABASE, Kind.CACHE, Kind.DATA_WAREHOUSE,
+    Kind.SQL_DATABASE, Kind.SQL_CLUSTER, Kind.CACHE, Kind.DATA_WAREHOUSE,
 })
 
 # Default ingress ports per security group purpose.
@@ -280,7 +281,7 @@ class ResourceMapper:
         protected_by: dict[str, Resource | None] = {
             "alb_sg": lb,
             "app_sg": app,
-            "db_sg": spec.first(Kind.SQL_DATABASE),
+            "db_sg": spec.first(Kind.SQL_DATABASE) or spec.first(Kind.SQL_CLUSTER),
             "cache_sg": spec.first(Kind.CACHE),
             "bastion_sg": spec.first(Kind.BASTION),
             "warehouse_sg": spec.first(Kind.DATA_WAREHOUSE),
@@ -314,8 +315,9 @@ class ResourceMapper:
         # Ports the user named win over any default.
         if not props.get("ingress_ports"):
             ports = list(DEFAULT_PORTS.get(purpose, [443]))
-            if purpose == "database" and spec.first(Kind.SQL_DATABASE) is not None:
-                engine = str(spec.first(Kind.SQL_DATABASE).properties.get("engine", ""))
+            database = spec.first(Kind.SQL_DATABASE) or spec.first(Kind.SQL_CLUSTER)
+            if purpose == "database" and database is not None:
+                engine = str(database.properties.get("engine", ""))
                 mysql_family = ("mysql", "aurora-mysql", "mariadb")
                 ports = [3306] if engine.startswith(mysql_family) else [5432]
             props["ingress_ports"] = ports
@@ -335,8 +337,7 @@ class ResourceMapper:
 
         # Database ports follow the engine even when the group was reused.
         if purpose == "database":
-            db = spec.first(Kind.SQL_DATABASE)
-            if db is not None:
+            for db in spec.of_kind(Kind.SQL_DATABASE, Kind.SQL_CLUSTER):
                 db.properties.setdefault("port", props["ingress_ports"][0])
 
     # ------------------------------------------------------------------

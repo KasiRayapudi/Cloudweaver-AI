@@ -18,18 +18,34 @@ from __future__ import annotations
 
 import re
 
-from app.models.ir import InfrastructureSpec, Kind, Origin, Resource, slugify
+from app.engine.constraints import fit, prefix_budget
+from app.models.ir import (
+    Exclusion,
+    InfrastructureSpec,
+    Kind,
+    Origin,
+    Resource,
+    slugify,
+)
 from app.nlp.base import Extractor
 from app.nlp.catalog import (
     AUTOSCALING_TRIGGERS,
+    CLAUSE_BOUNDARIES,
     DB_ENGINES,
     DEFAULT_OS,
     ENVIRONMENT_CANONICAL,
     ENVIRONMENTS,
+    HEDGE_CUES,
     LEXICON,
     LEXICON_TOKENS,
     LOAD_BALANCER_TRIGGERS,
+    NEGATION_CUES,
+    NEGATION_EXEMPTIONS,
+    NEGATION_WINDOW,
     OPERATING_SYSTEMS,
+    POSTFIX_BOUNDARIES,
+    POSTFIX_CUES,
+    POSTFIX_WINDOW,
     PRIVATE_PLACEMENT_MARKERS,
     PROTOCOL_PORTS,
     REGION_ALIASES,
@@ -43,8 +59,14 @@ NUMBER_WORDS: dict[str, int] = {
 }
 
 # "3 ", "three ", "a couple of " immediately before a matched phrase.
+#
+# The digit branch is fenced on both sides. Without the lookarounds a number
+# donates its trailing digits to the count: "Windows Server 2022" read as 22
+# instances, "172.16.0.0/16" as 16. Version numbers, CIDR masks, dates, ports
+# and instance sizes all end up adjacent to service phrases, so a quantity is
+# only believed when it stands alone as a whole token.
 _QUANTITY_RE = re.compile(
-    r"(?:(\d{1,3})|\b(a couple of|a pair of|a few|several|"
+    r"(?:(?<![\w./\-])(\d{1,3})(?![\w./\-])|\b(a couple of|a pair of|a few|several|"
     r"one|two|three|four|five|six|seven|eight|nine|ten|twelve)\b)\s+"
     r"(?:[a-z0-9.\-]+\s+){0,2}$"
 )
@@ -137,6 +159,14 @@ class RuleExtractor(Extractor):
                     count = self._quantity(text, start, consumed)
                     evidence = self._evidence(text, start, end)
 
+                    cue = self._refusal_cue(text, start) or self._trailing_cue(text, end)
+                    if cue is not None:
+                        spec.exclude(Exclusion(
+                            kind=entry.kind, phrase=phrase, cue=cue,
+                            evidence=evidence,
+                        ))
+                        continue
+
                     if entry.kind in seen_kinds:
                         # Same service mentioned twice: keep the larger count
                         # rather than creating a duplicate resource.
@@ -163,11 +193,70 @@ class RuleExtractor(Extractor):
                     seen_kinds[entry.kind] = resource
 
         self._merge_compute(text, spec, seen_kinds)
+        self._merge_databases(spec, seen_kinds)
         self._apply_triggers(text, spec, seen_kinds)
         self._attach_properties(text, spec)
         self._flag_ambiguity(text, spec, seen_kinds)
         spec.summary = self._summary(spec)
         return spec
+
+    # -- refusals ----------------------------------------------------------
+
+    @staticmethod
+    def _refusal_cue(text: str, phrase_start: int) -> str | None:
+        """The word that rules this phrase out, if any.
+
+        Matching a service phrase says the words appeared, not that the user
+        wanted the service. "an EC2 instance without a load balancer" contains
+        "load balancer" and is a refusal of it; so is "maybe add a database
+        later". Both used to create the resource anyway, which contradicted
+        the product's central promise more directly than any other defect.
+        """
+        window_start = max(0, phrase_start - NEGATION_WINDOW)
+        window = text[window_start:phrase_start]
+
+        # A contrast resets the refusal: in "no database but a web server"
+        # the web server is wanted.
+        for boundary in CLAUSE_BOUNDARIES:
+            position = window.rfind(boundary)
+            if position != -1:
+                window = window[position + len(boundary):]
+
+        for cue in NEGATION_CUES + HEDGE_CUES:
+            match = re.search(r"(?<![a-z])" + re.escape(cue) + r"(?![a-z])", window)
+            if match is None:
+                continue
+            # "no single point of failure" is an availability requirement.
+            absolute = window_start + (len(text[window_start:phrase_start]) - len(window))
+            absolute += match.start()
+            if any(
+                exemption in text and
+                text.index(exemption) <= absolute < text.index(exemption) + len(exemption)
+                for exemption in NEGATION_EXEMPTIONS
+            ):
+                continue
+            return cue
+        return None
+
+    @staticmethod
+    def _trailing_cue(text: str, phrase_end: int) -> str | None:
+        """A cue that defers the service *after* naming it.
+
+        "a database in the future" and "a cache is not needed" put the refusal
+        behind the noun, which a backward-only scan cannot see. The window is
+        cut at the next conjunction so that "a database and no cache" does not
+        read the cache's refusal as the database's.
+        """
+        window = text[phrase_end:phrase_end + POSTFIX_WINDOW]
+        for boundary in POSTFIX_BOUNDARIES:
+            position = window.find(boundary)
+            if position != -1:
+                window = window[:position]
+
+        for cue in POSTFIX_CUES:
+            if re.search(r"(?<![a-z])" + re.escape(cue) + r"(?![a-z])", window):
+                return cue
+        return None
 
     # -- trigger phrases ---------------------------------------------------
 
@@ -199,7 +288,8 @@ class RuleExtractor(Extractor):
         )
 
         # -- auto scaling group ------------------------------------------
-        if Kind.AUTOSCALING_GROUP not in seen and not managed_platform:
+        if (Kind.AUTOSCALING_GROUP not in seen and not managed_platform
+                and not spec.is_excluded(Kind.AUTOSCALING_GROUP)):
             phrase = matched(AUTOSCALING_TRIGGERS)
             if phrase:
                 self._add_triggered(
@@ -209,7 +299,7 @@ class RuleExtractor(Extractor):
                 )
 
         # -- load balancer -----------------------------------------------
-        if Kind.LOAD_BALANCER not in seen:
+        if Kind.LOAD_BALANCER not in seen and not spec.is_excluded(Kind.LOAD_BALANCER):
             phrase = matched(LOAD_BALANCER_TRIGGERS)
             if phrase:
                 self._add_triggered(
@@ -313,7 +403,13 @@ class RuleExtractor(Extractor):
 
     @staticmethod
     def _project_name(raw: str, environment: str) -> str:
-        """Derive a project slug from the first few meaningful words."""
+        """Derive a project slug from the first few meaningful words.
+
+        The environment is deliberately NOT appended: Terraform's
+        ``local.name_prefix`` is ``"${var.project_name}-${var.environment}"``,
+        so adding it here produced names like ``analytics-prod-prod`` and ate
+        the budget that load balancer names (capped at 32) have to fit in.
+        """
         stop = {
             "a", "an", "the", "i", "we", "need", "want", "build", "create", "deploy",
             "set", "up", "setup", "please", "make", "me", "for", "with", "on", "aws",
@@ -324,7 +420,9 @@ class RuleExtractor(Extractor):
             if w not in stop and not w.isdigit()
         ]
         base = "-".join(words[:3]) if words else "generated"
-        return f"{base}-{environment}"[:48].strip("-")
+        # Leave room for "-<environment>-<suffix>" inside the tightest AWS cap.
+        budget = prefix_budget() - len(environment) - 1
+        return fit(base, max(8, budget)).strip("-")
 
     def _attach_properties(self, text: str, spec: InfrastructureSpec) -> None:
         """Pull sizes, engines and flags out of the text onto the right resources."""
@@ -363,8 +461,33 @@ class RuleExtractor(Extractor):
                     props["max_size"] = max(props["min_size"] * 3, 4)
                     props["desired_capacity"] = props["min_size"]
 
+            if resource.kind == Kind.SQL_CLUSTER:
+                engine, version = self._db_engine(text)
+                if not engine.startswith("aurora"):
+                    engine = "aurora-postgresql"
+                    version = "15.4"
+                props["engine"] = engine
+                props["engine_version"] = version
+                props["instance_class"] = (
+                    "db.r6g.large" if spec.environment == "prod" else "db.t3.medium"
+                )
+                # A cluster is two writers/readers when high availability is
+                # asked for, one otherwise. Aurora storage is shared, so this
+                # is an instance count rather than a storage decision.
+                props["instances"] = nodes or (2 if spec.high_availability else 1)
+                props["backup_retention_period"] = (
+                    7 if backups or spec.environment == "prod" else 1
+                )
+                props["storage_encrypted"] = True
+
             if resource.kind == Kind.SQL_DATABASE:
                 engine, version = self._db_engine(text)
+                if engine.startswith("aurora"):
+                    # Aurora is only ever a cluster (C2). If the text mentions
+                    # it alongside a separate instance, the instance takes the
+                    # non-Aurora equivalent rather than an engine AWS rejects.
+                    engine = "postgres" if "postgre" in engine else "mysql"
+                    version = "15.5" if engine == "postgres" else "8.0.35"
                 props["engine"] = engine
                 props["engine_version"] = version
                 props["instance_class"] = (
@@ -513,6 +636,37 @@ class RuleExtractor(Extractor):
         spec.note(
             "The EC2 instances described are the auto scaling group's members, "
             "so they are generated as a launch template rather than standalone hosts."
+        )
+
+    @staticmethod
+    def _merge_databases(
+        spec: InfrastructureSpec, seen: dict[Kind, Resource]
+    ) -> None:
+        """Fold a trailing generic "database" into the cluster it describes.
+
+        "an aurora postgresql database" matches "aurora postgresql" as a
+        cluster and then matches the leftover word "database" again, producing
+        a second, standalone RDS instance that the user never asked for -- and
+        one that would inherit the Aurora engine, which is exactly the invalid
+        combination C2 removed.
+        """
+        cluster = seen.get(Kind.SQL_CLUSTER)
+        database = seen.get(Kind.SQL_DATABASE)
+        if cluster is None or database is None:
+            return
+
+        generic = ("database", "db", "sql database", "relational database")
+        named_generically = any(
+            f"names {phrase!r}" in database.reason for phrase in generic
+        )
+        if not named_generically:
+            return
+
+        spec.resources.remove(database)
+        del seen[Kind.SQL_DATABASE]
+        spec.note(
+            "The word 'database' describes the Aurora cluster, so it is "
+            "generated as one cluster rather than a cluster plus an instance."
         )
 
     @staticmethod

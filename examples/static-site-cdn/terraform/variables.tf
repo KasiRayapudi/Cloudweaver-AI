@@ -3,7 +3,7 @@
 # Name prefix applied to every resource.
 variable "project_name" {
   type    = string
-  default = "host-static-website-dev"
+  default = "host-static-website"
 }
 
 # Deployment environment (dev, staging, prod).

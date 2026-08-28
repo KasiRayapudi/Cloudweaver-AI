@@ -12,11 +12,23 @@ python backend/cli.py "<prompt>" -o examples/<name>
 | `three-tier-web-app/` | Production three-tier app in eu-west-1: auto scaling group in private subnets behind an ALB, Multi-AZ PostgreSQL, Redis cache, S3 uploads bucket, highly available. |
 | `serverless-api/` | Serverless REST API: API Gateway → Python Lambda → DynamoDB, with an SQS queue for background jobs, dev in ap-south-1. |
 | `static-site-cdn/` | Static site in S3 behind CloudFront with a Route 53 domain and a WAF. |
+| `aurora-cluster/` | Aurora PostgreSQL cluster behind an auto scaling web tier, highly available in production. |
 
 `single-ec2/` is the one to read first. It contains eight resources and no
 others: no load balancer, no scaling group, no NAT gateway, no database. The
 AMI is Ubuntu because the prompt said Ubuntu, and the security group opens 22
 and 80 because the prompt said SSH and HTTP.
+
+`aurora-cluster/` is worth a look for the opposite reason: Aurora is emitted as
+`aws_rds_cluster` plus `aws_rds_cluster_instance`, not as an `aws_db_instance`
+with an Aurora engine. The latter passes `terraform validate` and is rejected
+by the AWS API at apply.
+
+Every project here passes `terraform validate`:
+
+```bash
+python scripts/tf_validate.py
+```
 
 Each directory holds `terraform/`, `diagram/architecture.svg`,
 `diagram/architecture.mmd` and `spec.json` — the shared model the other two

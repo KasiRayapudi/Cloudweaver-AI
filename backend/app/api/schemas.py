@@ -61,6 +61,16 @@ class ExtractionModel(BaseModel):
     source: str | None = None
 
 
+class ExclusionModel(BaseModel):
+    """A service the requirement explicitly ruled out."""
+
+    kind: str
+    phrase: str
+    cue: str
+    reason: str
+    evidence: str
+
+
 class DependencyGraphModel(BaseModel):
     #: resource id -> ids it must be created after
     edges: dict[str, list[str]]
@@ -76,6 +86,7 @@ class GenerateResponse(BaseModel):
     findings: list[FindingModel]
     dependency_graph: DependencyGraphModel
     extraction: list[ExtractionModel]
+    exclusions: list[ExclusionModel]
 
 
 class ExampleModel(BaseModel):

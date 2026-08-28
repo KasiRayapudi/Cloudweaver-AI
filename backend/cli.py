@@ -72,6 +72,11 @@ def main(argv: list[str] | None = None) -> int:
         marker = " " if r.origin.value == "explicit" else "+"
         print(f"  {marker} {label:<30} [{r.id}]")
 
+    if spec.exclusions:
+        print("\nExplicitly excluded:")
+        for exclusion in spec.exclusions:
+            print(f"  - {exclusion.kind.value} ({exclusion.cue!r} in the requirement)")
+
     if spec.assumptions:
         print("\nAssumptions:")
         for note in spec.assumptions:

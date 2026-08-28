@@ -3,7 +3,7 @@
   "prompt": "I need a production three-tier web app in eu-west-1: an auto scaling group of EC2 instances in private subnets behind an application load balancer, a Multi-AZ PostgreSQL database, a Redis cache and an S3 bucket for uploads. Highly available.",
   "summary": "prod environment in eu-west-1 with multi-AZ high availability: Application Load Balancer, Auto Scaling Group, RDS Instance, ElastiCache Redis, S3 Bucket, Private Subnet.",
   "spec": {
-    "name": "production-three-tier-prod",
+    "name": "production-three-tier",
     "provider": "aws",
     "region": "eu-west-1",
     "environment": "prod",
@@ -601,6 +601,7 @@
       "One NAT gateway per availability zone (3 total) because high availability was requested."
     ],
     "warnings": [],
+    "exclusions": [],
     "extractor": "rule"
   },
   "findings": [

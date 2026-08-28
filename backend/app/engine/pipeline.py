@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass, field
 
 from app.config import Settings, get_settings
+from app.engine.emission import audit as audit_emission
 from app.engine.mapper import ResourceMapper
 from app.engine.validator import Finding, SpecValidator, estimate_monthly_cost
 from app.generators.diagram.layout import LayoutEngine
@@ -48,6 +49,16 @@ class GenerationResult:
                 "creation_order": self.spec.creation_order(),
                 "cycles": self.spec.find_cycles(),
             },
+            "exclusions": [
+                {
+                    "kind": e.kind.value,
+                    "phrase": e.phrase,
+                    "cue": e.cue,
+                    "reason": e.reason,
+                    "evidence": e.evidence,
+                }
+                for e in self.spec.exclusions
+            ],
             "extraction": [
                 {
                     "resource": r.name,
@@ -135,6 +146,14 @@ class Pipeline:
         svg = self.svg.render(layout)
         mermaid = self.mermaid.render(spec)
         terraform = self.terraform.generate(spec) if spec.resources else {}
+
+        # Stage 5b: confirm the code contains what the model describes. This
+        # runs after generation because it compares the two artefacts, which is
+        # the only way to catch a resource the generator silently dropped.
+        findings += [
+            Finding(severity, code, message)  # type: ignore[arg-type]
+            for severity, code, message in audit_emission(spec, terraform)
+        ]
 
         return GenerationResult(
             spec=spec,

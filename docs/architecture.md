@@ -85,7 +85,7 @@ particular problem:
 The rule extractor fixes all three. It is longest-match phrase extraction over
 a curated lexicon with span consumption, plus attribute regexes for counts,
 instance sizes, engines, regions and environments. Its output is the oracle the
-mapper, generators and 367 tests are written against. The LLM path is the
+mapper, generators and 494 tests are written against. The LLM path is the
 quality upgrade for phrasing the lexicon does not cover, constrained by a tool
 schema so it can only speak the same vocabulary.
 
@@ -118,15 +118,39 @@ connectors: they attach to almost everything, and drawing those edges destroys
 the diagram for no information gain. The full graph is still present in the
 Mermaid export and the shared-model view.
 
-## Validation without the Terraform binary
+## Three layers of validation
 
-`terraform validate` needs the binary and a provider download. The test suite
-instead parses the generated project, collects every `resource`/`data`
-declaration, and asserts that every `aws_*.name` reference resolves to one of
-them — plus the same check for `var.*`. That catches the real failure mode of a
-generator (emitting a reference to something it forgot to create) in
-milliseconds, offline. Running `terraform validate` against the output remains
-worthwhile as a manual step; it is not a prerequisite for developing on this.
+Each layer catches something the others cannot, which is why all three exist.
+
+**1. Structural, in the unit tests.** The suite parses the generated project,
+collects every `resource`/`data` declaration, and asserts that every
+`aws_*.name` reference resolves to one of them, plus the same check for
+`var.*`. This catches the real failure mode of a generator — emitting a
+reference to something it forgot to create — in milliseconds and offline.
+
+**2. `terraform validate`, in `scripts/tf_validate.py`.** Twelve
+structurally distinct projects are generated and validated against the real
+binary and the real AWS provider schema. This is the only layer that knows
+whether an argument actually exists on a resource. It found a live defect on
+its first run: an Elastic IP referencing a counted instance without an index.
+
+One implementation note that matters for CI: Terraform copies the provider
+into every working directory it initialises, roughly 600 MB apiece, and the
+plugin cache cannot symlink on Windows. Initialising a directory per project
+filled a 200 GB disk within twelve projects. The harness therefore initialises
+*one* directory and swaps each project's files into it.
+
+**3. AWS API constraints, in `engine/constraints.py`.** `terraform validate`
+checks schema, not provider semantics. An `aws_db_instance` carrying an Aurora
+engine and a 42-character load balancer name both validate cleanly and are
+then rejected by the AWS API at apply. This layer covers exactly that gap, and
+is why the Aurora and name-length defects could be found without an AWS
+account.
+
+**Plus an emission audit.** `engine/emission.py` compares the finished
+Terraform back against the model and reports any resource the generator
+dropped. The generator still assumes one resource per kind in places; the
+audit does not remove that limitation, it makes hitting it impossible to miss.
 
 `test_coverage.py` adds the two checks that matter most for a generator built
 around a shared model, run for all 34 kinds:

@@ -11,6 +11,7 @@ so the deployed infrastructure is traceable back to the prompt that produced it.
 
 from __future__ import annotations
 
+from app.engine.constraints import MAX_SUFFIX, TIGHTEST_LIMIT
 from app.generators.terraform.hcl import Block, HclFile, Raw, ref, var
 from app.models.ir import InfrastructureSpec, Kind, Resource
 
@@ -25,6 +26,18 @@ def _name(resource: Resource) -> str:
 
 def _prefixed(suffix: str) -> Raw:
     return Raw(f'"${{local.name_prefix}}-{suffix}"')
+
+
+def _capped(suffix: str, limit: int = TIGHTEST_LIMIT) -> Raw:
+    """A name AWS will accept even if the project name is long.
+
+    ``local.name_prefix`` is interpolated at apply time, so its final length is
+    not known here. Load balancer and target group names are capped at 32
+    characters and a descriptive prompt easily exceeds that, producing a plan
+    that fails at apply. ``local.name_short`` is the prefix already trimmed to
+    fit, computed once in locals.tf.
+    """
+    return Raw(f'"${{local.name_short}}-{suffix}"')
 
 
 def _tags(*extra: tuple[str, str]) -> Raw:
@@ -216,7 +229,7 @@ class TerraformGenerator:
                 {"type": Raw("number"), "default": spec.availability_zones}
             )
 
-        db = spec.first(Kind.SQL_DATABASE)
+        db = spec.first(Kind.SQL_DATABASE) or spec.first(Kind.SQL_CLUSTER)
         if db is not None:
             f.variable("db_username", "Master username for the managed database.").set_all(
                 {"type": Raw("string"), "default": "appadmin"}
@@ -244,6 +257,16 @@ class TerraformGenerator:
         f = HclFile("Shared naming and tagging.")
         block = f.add(Block("locals"))
         block.set("name_prefix", Raw('"${var.project_name}-${var.environment}"'))
+        # Trimmed prefix for resources AWS caps at 32 characters. substr is
+        # safe on shorter strings, and trimsuffix stops a trailing hyphen when
+        # the cut lands on one -- AWS rejects names that end in "-".
+        block.set(
+            "name_short",
+            Raw(
+                'trimsuffix(substr("${var.project_name}-${var.environment}", 0, '
+                f'{TIGHTEST_LIMIT - MAX_SUFFIX}), "-")'
+            ),
+        )
         block.set(
             "tags",
             Raw(
@@ -287,7 +310,7 @@ class TerraformGenerator:
             vpc = spec.first(Kind.VPC)
             lines.append(f'vpc_cidr     = "{vpc.properties.get("cidr_block", "10.0.0.0/16")}"')
             lines.append(f"az_count     = {spec.availability_zones}")
-        if spec.has(Kind.SQL_DATABASE):
+        if spec.has(Kind.SQL_DATABASE) or spec.has(Kind.SQL_CLUSTER):
             lines.append('db_username  = "appadmin"')
             lines.append('db_name      = "appdb"')
         return "\n".join(lines) + "\n"
@@ -437,7 +460,11 @@ class TerraformGenerator:
         e = f.resource("aws_eip", _name(eip), "Static public address.")
         e.set("domain", "vpc")
         if target is not None and target.kind is Kind.VM:
-            e.set("instance", ref("aws_instance", _name(target), "id"))
+            # A counted resource is a list, so it cannot be referenced bare.
+            # One Elastic IP attaches to the first instance; attaching one per
+            # instance would be a resource the user never asked for.
+            suffix = "[0]" if target.count > 1 else ""
+            e.set("instance", Raw(f"aws_instance.{_name(target)}{suffix}.id"))
         e.set("tags", _tags(("Name", "${local.name_prefix}-eip")))
 
     # ------------------------------------------------------------------
@@ -720,22 +747,26 @@ class TerraformGenerator:
         f = HclFile("Data stores.")
         private = spec.first(Kind.SUBNET_PRIVATE)
 
-        db = spec.first(Kind.SQL_DATABASE)
-        if db is not None:
-            if private is not None:
-                sn = f.resource("aws_db_subnet_group", "main")
-                sn.set("name", _prefixed("db-subnets"))
-                sn.set("subnet_ids", Raw(f"aws_subnet.{_name(private)}[*].id"))
-                sn.set("tags", _tags())
+        databases = spec.of_kind(Kind.SQL_DATABASE)
+        if databases and private is not None:
+            # One subnet group serves every database in the VPC.
+            sn = f.resource("aws_db_subnet_group", "main")
+            sn.set("name", _prefixed("db-subnets"))
+            sn.set("subnet_ids", Raw(f"aws_subnet.{_name(private)}[*].id"))
+            sn.set("tags", _tags())
 
-            pw = f.resource("random_password", "db",
-                            "Master password, generated and stored in Secrets Manager.")
+        for db in databases:
+            # Named per database, so two databases get two credentials rather
+            # than silently sharing one.
+            password = f"{_name(db)}_password"
+            pw = f.resource("random_password", password,
+                            "Master password, generated rather than written down.")
             pw.set("length", 32)
             pw.set("special", True)
             pw.set("override_special", "!#$%&*()-_=+[]{}<>:?")
 
             b = f.resource("aws_db_instance", _name(db))
-            b.set("identifier", _prefixed("db"))
+            b.set("identifier", _prefixed(db.id.replace("_", "-")))
             b.set("engine", db.properties.get("engine", "postgres"))
             b.set("engine_version", db.properties.get("engine_version", "15.5"))
             b.set("instance_class", db.properties.get("instance_class", "db.t3.micro"))
@@ -744,7 +775,7 @@ class TerraformGenerator:
             b.set("storage_encrypted", True)
             b.set("db_name", var("db_name"))
             b.set("username", var("db_username"))
-            b.set("password", Raw("random_password.db.result"))
+            b.set("password", Raw(f"random_password.{password}.result"))
             b.set("port", db.properties.get("port", 5432))
             if private is not None:
                 b.set("db_subnet_group_name", ref("aws_db_subnet_group", "main", "name"))
@@ -782,7 +813,7 @@ class TerraformGenerator:
                 sn.set("subnet_ids", Raw(f"aws_subnet.{_name(private)}[*].id"))
 
             b = f.resource("aws_elasticache_replication_group", _name(cache))
-            b.set("replication_group_id", _prefixed("redis"))
+            b.set("replication_group_id", _capped("redis"))
             b.set("description", "Redis cache generated from the requirement description")
             b.set("engine", "redis")
             b.set("node_type", cache.properties.get("node_type", "cache.t3.micro"))
@@ -830,6 +861,56 @@ class TerraformGenerator:
             rid = f.resource("random_id", "bucket_suffix",
                              "S3 bucket names are globally unique; add a stable suffix.")
             rid.set("byte_length", 4)
+
+        for cluster in spec.of_kind(Kind.SQL_CLUSTER):
+            # Aurora is not an aws_db_instance. Storage is shared across the
+            # cluster and the writer/reader instances are separate resources;
+            # putting an Aurora engine on aws_db_instance passes `terraform
+            # validate` and is then rejected by the API at apply time.
+            if private is not None and not spec.has(Kind.SQL_DATABASE):
+                sn = f.resource("aws_db_subnet_group", "main")
+                sn.set("name", _prefixed("db-subnets"))
+                sn.set("subnet_ids", Raw(f"aws_subnet.{_name(private)}[*].id"))
+                sn.set("tags", _tags())
+
+            pw = f.resource("random_password", f"{_name(cluster)}_master",
+                            "Master password for the cluster.")
+            pw.set("length", 32)
+            pw.set("special", False)
+
+            b = f.resource("aws_rds_cluster", _name(cluster))
+            b.set("cluster_identifier", _prefixed(cluster.id.replace("_", "-")))
+            b.set("engine", cluster.properties.get("engine", "aurora-postgresql"))
+            b.set("engine_version", cluster.properties.get("engine_version", "15.4"))
+            b.set("database_name", var("db_name"))
+            b.set("master_username", var("db_username"))
+            b.set("master_password", Raw(f"random_password.{_name(cluster)}_master.result"))
+            b.set("port", cluster.properties.get("port", 5432))
+            if private is not None:
+                b.set("db_subnet_group_name", ref("aws_db_subnet_group", "main", "name"))
+            if spec.get("db_sg") is not None:
+                b.set("vpc_security_group_ids", [ref("aws_security_group", "db_sg", "id")])
+            b.set("storage_encrypted", True)
+            b.set("backup_retention_period",
+                  cluster.properties.get("backup_retention_period", 7))
+            b.set("preferred_backup_window", "03:00-04:00")
+            b.set("deletion_protection", spec.environment == "prod")
+            b.set("skip_final_snapshot", spec.environment != "prod")
+            b.set("tags", _tags(("Name", "${local.name_prefix}-aurora")))
+
+            instances = max(1, int(cluster.properties.get("instances", 1)))
+            inst = f.resource("aws_rds_cluster_instance", f"{_name(cluster)}_instances",
+                              "Writer plus any readers. Aurora shares one storage volume.")
+            inst.set("count", instances)
+            inst.set("identifier",
+                     Raw('"${local.name_prefix}-aurora-${count.index + 1}"'))
+            inst.set("cluster_identifier", ref("aws_rds_cluster", _name(cluster), "id"))
+            inst.set("instance_class",
+                     cluster.properties.get("instance_class", "db.t3.medium"))
+            inst.set("engine", ref("aws_rds_cluster", _name(cluster), "engine"))
+            inst.set("engine_version", ref("aws_rds_cluster", _name(cluster), "engine_version"))
+            inst.set("performance_insights_enabled", spec.environment == "prod")
+            inst.set("tags", _tags())
 
         warehouse = spec.first(Kind.DATA_WAREHOUSE)
         if warehouse is not None:
@@ -896,7 +977,7 @@ class TerraformGenerator:
         lb = spec.first(Kind.LOAD_BALANCER)
         if lb is not None:
             b = f.resource("aws_lb", _name(lb))
-            b.set("name", _prefixed("alb"))
+            b.set("name", _capped("alb"))
             b.set("load_balancer_type", "application")
             b.set("internal", bool(lb.properties.get("internal", False)))
             if spec.get("alb_sg") is not None:
@@ -911,7 +992,7 @@ class TerraformGenerator:
         tg = spec.first(Kind.TARGET_GROUP)
         if tg is not None and vpc is not None:
             b = f.resource("aws_lb_target_group", _name(tg))
-            b.set("name", _prefixed("tg"))
+            b.set("name", _capped("tg"))
             b.set("port", tg.properties.get("port", 80))
             b.set("protocol", "HTTP")
             b.set("vpc_id", ref("aws_vpc", _name(vpc), "id"))
@@ -1416,6 +1497,18 @@ class TerraformGenerator:
             f.output("database_endpoint").set_all({
                 "description": "Connection endpoint for the managed database",
                 "value": ref("aws_db_instance", _name(db), "address"),
+                "sensitive": True,
+            })
+
+        for cluster in spec.of_kind(Kind.SQL_CLUSTER):
+            f.output(f"{_name(cluster)}_endpoint").set_all({
+                "description": "Aurora cluster writer endpoint",
+                "value": ref("aws_rds_cluster", _name(cluster), "endpoint"),
+                "sensitive": True,
+            })
+            f.output(f"{_name(cluster)}_reader_endpoint").set_all({
+                "description": "Aurora cluster reader endpoint",
+                "value": ref("aws_rds_cluster", _name(cluster), "reader_endpoint"),
                 "sensitive": True,
             })
 

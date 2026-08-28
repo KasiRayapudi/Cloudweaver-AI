@@ -6,15 +6,15 @@ resource "aws_db_subnet_group" "main" {
   tags       = local.tags
 }
 
-# Master password, generated and stored in Secrets Manager.
-resource "random_password" "db" {
+# Master password, generated rather than written down.
+resource "random_password" "app_db_password" {
   length           = 32
   special          = true
   override_special = "!#$%&*()-_=+[]{}<>:?"
 }
 
 resource "aws_db_instance" "app_db" {
-  identifier                   = "${local.name_prefix}-db"
+  identifier                   = "${local.name_prefix}-app-db"
   engine                       = "postgres"
   engine_version               = "15.5"
   instance_class               = "db.t3.medium"
@@ -23,7 +23,7 @@ resource "aws_db_instance" "app_db" {
   storage_encrypted            = true
   db_name                      = var.db_name
   username                     = var.db_username
-  password                     = random_password.db.result
+  password                     = random_password.app_db_password.result
   port                         = 5432
   db_subnet_group_name         = aws_db_subnet_group.main.name
   vpc_security_group_ids       = [aws_security_group.db_sg.id]
@@ -43,7 +43,7 @@ resource "aws_elasticache_subnet_group" "main" {
 }
 
 resource "aws_elasticache_replication_group" "app_cache" {
-  replication_group_id       = "${local.name_prefix}-redis"
+  replication_group_id       = "${local.name_short}-redis"
   description                = "Redis cache generated from the requirement description"
   engine                     = "redis"
   node_type                  = "cache.t3.micro"

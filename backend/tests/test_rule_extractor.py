@@ -83,7 +83,6 @@ def test_explicit_az_count(extractor):
     [
         ("a mysql database", "mysql"),
         ("a postgres database", "postgres"),
-        ("an aurora mysql cluster", "aurora-mysql"),
         ("a mariadb instance", "mariadb"),
         ("a database", "postgres"),
     ],
@@ -91,6 +90,18 @@ def test_explicit_az_count(extractor):
 def test_database_engine(extractor, text, engine):
     spec = extractor.extract(text)
     assert spec.first(Kind.SQL_DATABASE).properties["engine"] == engine
+
+
+@pytest.mark.parametrize("text,engine", [
+    ("an aurora mysql cluster", "aurora-mysql"),
+    ("an aurora postgresql cluster", "aurora-postgresql"),
+    ("aurora", "aurora-postgresql"),
+])
+def test_aurora_is_a_cluster_not_an_instance(extractor, text, engine):
+    """Aurora is its own kind: it emits aws_rds_cluster, not aws_db_instance."""
+    spec = extractor.extract(text)
+    assert spec.first(Kind.SQL_DATABASE) is None
+    assert spec.first(Kind.SQL_CLUSTER).properties["engine"] == engine
 
 
 def test_instance_type_is_picked_up(extractor):

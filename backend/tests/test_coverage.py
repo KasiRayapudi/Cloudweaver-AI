@@ -37,6 +37,7 @@ IMPLEMENTATION_DETAIL: frozenset[str] = frozenset({
     "aws_iam_role_policy_attachment", "aws_iam_role_policy",
     "aws_lb_listener", "aws_db_subnet_group", "aws_elasticache_subnet_group",
     "aws_redshift_subnet_group", "aws_cloudwatch_log_group",
+    "aws_rds_cluster_instance",
     "aws_s3_bucket_versioning", "aws_s3_bucket_public_access_block",
     "aws_s3_bucket_server_side_encryption_configuration",
     "aws_cloudfront_origin_access_control", "aws_apigatewayv2_stage",

@@ -198,7 +198,7 @@ backend/
     api/                    FastAPI routes and schemas
     export/bundle.py        zip / on-disk packaging
   cli.py
-  tests/                    367 tests
+  tests/                    494 tests
 frontend/                   dependency-free single page UI
 ```
 

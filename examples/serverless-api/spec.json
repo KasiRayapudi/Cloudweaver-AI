@@ -3,7 +3,7 @@
   "prompt": "A serverless REST API: API Gateway in front of a Python Lambda function that reads and writes a DynamoDB table, with an SQS queue for background jobs. Development environment in ap-south-1.",
   "summary": "dev environment in ap-south-1: Lambda Function, API Gateway, DynamoDB Table, SQS Queue.",
   "spec": {
-    "name": "serverless-rest-api-dev",
+    "name": "serverless-rest-api",
     "provider": "aws",
     "region": "ap-south-1",
     "environment": "dev",
@@ -122,6 +122,7 @@
       "IAM Role: Lambda requires an execution role."
     ],
     "warnings": [],
+    "exclusions": [],
     "extractor": "rule"
   },
   "findings": [],

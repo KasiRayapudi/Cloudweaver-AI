@@ -263,6 +263,16 @@ REQUIREMENTS: dict[Kind, tuple[Requirement, ...]] = {
         Requirement(Kind.SECURITY_GROUP, "The database requires a security group.",
                     id_hint="db_sg", properties={"purpose": "database"}),
     ),
+    Kind.SQL_CLUSTER: (
+        Requirement(Kind.VPC, "An Aurora cluster must live in a VPC."),
+        Requirement(
+            Kind.SUBNET_PRIVATE,
+            "Databases are placed in private subnets so they are not "
+            "reachable from the internet.",
+        ),
+        Requirement(Kind.SECURITY_GROUP, "The database cluster requires a security group.",
+                    id_hint="db_sg", properties={"purpose": "database"}),
+    ),
     Kind.CACHE: (
         Requirement(Kind.VPC, "An ElastiCache cluster must live in a VPC."),
         Requirement(Kind.SUBNET_PRIVATE, "Caches are placed in private subnets."),

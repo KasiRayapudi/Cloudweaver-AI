@@ -3,7 +3,7 @@
 # Name prefix applied to every resource.
 variable "project_name" {
   type    = string
-  default = "development-environment-in-dev"
+  default = "development-env-2c4973"
 }
 
 # Deployment environment (dev, staging, prod).

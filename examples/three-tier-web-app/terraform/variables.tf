@@ -3,7 +3,7 @@
 # Name prefix applied to every resource.
 variable "project_name" {
   type    = string
-  default = "production-three-tier-prod"
+  default = "production-three-tier"
 }
 
 # Deployment environment (dev, staging, prod).

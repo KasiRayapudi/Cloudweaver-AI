@@ -3,7 +3,7 @@
 # Name prefix applied to every resource.
 variable "project_name" {
   type    = string
-  default = "serverless-rest-api-dev"
+  default = "serverless-rest-api"
 }
 
 # Deployment environment (dev, staging, prod).

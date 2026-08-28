@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1228" height="640.0" viewBox="0 0 1228 640.0" role="img" aria-label="Cloud architecture diagram for production-three-tier-prod">
+<svg xmlns="http://www.w3.org/2000/svg" width="1228" height="640.0" viewBox="0 0 1228 640.0" role="img" aria-label="Cloud architecture diagram for production-three-tier">
 
   <style>
     .bg { fill: #ffffff; }
@@ -93,7 +93,7 @@
     </marker>
   </defs>
   <rect class="bg" width="1228" height="640.0" rx="8"/>
-  <text class="title" x="20" y="28">production-three-tier-prod</text>
+  <text class="title" x="20" y="28">production-three-tier</text>
   <text class="subtitle" x="20" y="45">AWS - eu-west-1 - prod</text>
   <rect class="group-box" x="110.0" y="182.0" width="866.0" height="418.0" rx="12"/>
   <text class="group-label" x="122.0" y="199.0">VPC - 10.0.0.0/16 - 3 AZs</text>

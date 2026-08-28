@@ -1,0 +1,529 @@
+{
+  "generator": "ai-infra-iac-generator",
+  "prompt": "An Aurora PostgreSQL cluster with an auto scaling group of web servers in private subnets behind a load balancer, highly available in production.",
+  "summary": "prod environment in us-east-1 with multi-AZ high availability: Application Load Balancer, Auto Scaling Group, Aurora Cluster, Private Subnet.",
+  "spec": {
+    "name": "aurora-postgre-cfa0ec",
+    "provider": "aws",
+    "region": "us-east-1",
+    "environment": "prod",
+    "prompt": "An Aurora PostgreSQL cluster with an auto scaling group of web servers in private subnets behind a load balancer, highly available in production.",
+    "summary": "prod environment in us-east-1 with multi-AZ high availability: Application Load Balancer, Auto Scaling Group, Aurora Cluster, Private Subnet.",
+    "high_availability": true,
+    "private_placement_requested": true,
+    "availability_zones": 3,
+    "resources": [
+      {
+        "id": "alb",
+        "kind": "load_balancer",
+        "name": "Application Load Balancer",
+        "tier": "public",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "internal": false,
+          "listener_port": 80,
+          "scheme": "internet-facing",
+          "subnet_band": "public"
+        },
+        "confidence": 0.9,
+        "evidence": "...s in private subnets behind a load balancer highly available in productio...",
+        "reason": "The requirement names 'load balancer'."
+      },
+      {
+        "id": "app_asg",
+        "kind": "autoscaling_group",
+        "name": "Auto Scaling Group",
+        "tier": "app",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "os": "amazon linux",
+          "ami_name_filter": "al2023-ami-*-x86_64",
+          "ami_owner": "amazon",
+          "ssh_user": "ec2-user",
+          "instance_type": "t3.medium",
+          "min_size": 2,
+          "max_size": 6,
+          "desired_capacity": 2,
+          "subnet_band": "private"
+        },
+        "confidence": 0.95,
+        "evidence": "...ra postgresql cluster with an auto scaling group of web servers in private sub...",
+        "reason": "The requirement names 'auto scaling group'."
+      },
+      {
+        "id": "app_db_cluster",
+        "kind": "sql_cluster",
+        "name": "Aurora Cluster",
+        "tier": "data",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "engine": "aurora-postgresql",
+          "engine_version": "15.4",
+          "instance_class": "db.r6g.large",
+          "instances": 2,
+          "backup_retention_period": 7,
+          "storage_encrypted": true,
+          "subnet_band": "private",
+          "port": 5432
+        },
+        "confidence": 0.9,
+        "evidence": "an aurora postgresql cluster with an auto scaling...",
+        "reason": "The requirement names 'aurora postgresql'."
+      },
+      {
+        "id": "private",
+        "kind": "subnet_private",
+        "name": "Private Subnet",
+        "tier": "network",
+        "origin": "explicit",
+        "count": 3,
+        "properties": {
+          "map_public_ip": false,
+          "offset": 10
+        },
+        "confidence": 0.9,
+        "evidence": "...aling group of web servers in private subnets behind a load balancer highly...",
+        "reason": "The requirement names 'private subnets'."
+      },
+      {
+        "id": "main",
+        "kind": "vpc",
+        "name": "VPC",
+        "tier": "network",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "cidr_block": "10.0.0.0/16",
+          "enable_dns_hostnames": true
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "A load balancer must live in a VPC."
+      },
+      {
+        "id": "public",
+        "kind": "subnet_public",
+        "name": "Public Subnet",
+        "tier": "network",
+        "origin": "implied",
+        "count": 3,
+        "properties": {
+          "map_public_ip": true,
+          "offset": 0
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "An internet-facing load balancer needs public subnets."
+      },
+      {
+        "id": "alb_sg",
+        "kind": "security_group",
+        "name": "ALB Security Group",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "purpose": "load-balancer",
+          "ingress_ports": [
+            80,
+            443
+          ],
+          "ingress_from": "0.0.0.0/0"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "The load balancer requires a security group."
+      },
+      {
+        "id": "app_tg",
+        "kind": "target_group",
+        "name": "Target Group",
+        "tier": "public",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "port": 80,
+          "health_check_path": "/health"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "A load balancer listener must forward to a target group."
+      },
+      {
+        "id": "app_sg",
+        "kind": "security_group",
+        "name": "App Security Group",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "purpose": "application",
+          "ingress_ports": [
+            80,
+            443
+          ],
+          "ingress_from": "alb_sg"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "Auto Scaling Group requires a security group."
+      },
+      {
+        "id": "instance_role",
+        "kind": "iam_role",
+        "name": "EC2 Instance Role",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "service": "ec2.amazonaws.com"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "Scaled instances need an instance profile role."
+      },
+      {
+        "id": "db_sg",
+        "kind": "security_group",
+        "name": "Database Security Group",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "purpose": "database",
+          "ingress_ports": [
+            5432
+          ],
+          "ingress_from": "app_sg"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "The database cluster requires a security group."
+      },
+      {
+        "id": "private_rt",
+        "kind": "route_table",
+        "name": "Route Table",
+        "tier": "network",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "scope": "private"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "The private subnet needs its own route table."
+      },
+      {
+        "id": "nat",
+        "kind": "nat_gateway",
+        "name": "NAT Gateway",
+        "tier": "public",
+        "origin": "implied",
+        "count": 3,
+        "properties": {
+          "subnet_band": "public"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "Compute in the private subnet needs outbound internet access."
+      },
+      {
+        "id": "igw",
+        "kind": "internet_gateway",
+        "name": "Internet Gateway",
+        "tier": "network",
+        "origin": "implied",
+        "count": 1,
+        "properties": {},
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "A public subnet is only public with an internet gateway."
+      },
+      {
+        "id": "public_rt",
+        "kind": "route_table",
+        "name": "Route Table",
+        "tier": "network",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "scope": "public"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "The public subnet needs a route table with a default route."
+      },
+      {
+        "id": "eip",
+        "kind": "elastic_ip",
+        "name": "Elastic IP",
+        "tier": "public",
+        "origin": "implied",
+        "count": 3,
+        "properties": {
+          "attached_to": "nat"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "A NAT gateway requires an Elastic IP."
+      }
+    ],
+    "edges": [
+      {
+        "source": "main",
+        "target": "alb",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "public",
+        "target": "alb",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "alb_sg",
+        "target": "alb",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "app_tg",
+        "target": "alb",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "app_asg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "private",
+        "target": "app_asg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "app_sg",
+        "target": "app_asg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "instance_role",
+        "target": "app_asg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "app_db_cluster",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "private",
+        "target": "app_db_cluster",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "db_sg",
+        "target": "app_db_cluster",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "private",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "private_rt",
+        "target": "private",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "nat",
+        "target": "private",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "public",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "igw",
+        "target": "public",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "public_rt",
+        "target": "public",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "alb_sg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "app_tg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "app_sg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "db_sg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "private_rt",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "nat",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "public",
+        "target": "nat",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "igw",
+        "target": "nat",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "eip",
+        "target": "nat",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "igw",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "public_rt",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "private",
+        "kind": "contains",
+        "label": null
+      },
+      {
+        "source": "main",
+        "target": "public",
+        "kind": "contains",
+        "label": null
+      },
+      {
+        "source": "main",
+        "target": "igw",
+        "kind": "contains",
+        "label": "attached to"
+      },
+      {
+        "source": "nat",
+        "target": "igw",
+        "kind": "traffic",
+        "label": "egress"
+      },
+      {
+        "source": "main",
+        "target": "private_rt",
+        "kind": "contains",
+        "label": null
+      },
+      {
+        "source": "main",
+        "target": "public_rt",
+        "kind": "contains",
+        "label": null
+      },
+      {
+        "source": "alb",
+        "target": "app_tg",
+        "kind": "traffic",
+        "label": "forwards"
+      },
+      {
+        "source": "app_tg",
+        "target": "app_asg",
+        "kind": "traffic",
+        "label": "targets"
+      },
+      {
+        "source": "app_asg",
+        "target": "app_db_cluster",
+        "kind": "data",
+        "label": "queries"
+      }
+    ],
+    "assumptions": [
+      "No region stated; defaulting to us-east-1.",
+      "The EC2 instances described are the auto scaling group's members, so they are generated as a launch template rather than standalone hosts.",
+      "VPC: A load balancer must live in a VPC.",
+      "Public Subnet: An internet-facing load balancer needs public subnets.",
+      "Security Group: The load balancer requires a security group.",
+      "Target Group: A load balancer listener must forward to a target group.",
+      "Security Group: Auto Scaling Group requires a security group.",
+      "IAM Role: Scaled instances need an instance profile role.",
+      "Security Group: The database cluster requires a security group.",
+      "Route Table: The private subnet needs its own route table.",
+      "NAT Gateway: Compute in the private subnet needs outbound internet access.",
+      "Internet Gateway: A public subnet is only public with an internet gateway.",
+      "Route Table: The public subnet needs a route table with a default route.",
+      "Elastic IP: A NAT gateway requires an Elastic IP.",
+      "One NAT gateway per availability zone (3 total) because high availability was requested."
+    ],
+    "warnings": [],
+    "exclusions": [],
+    "extractor": "rule"
+  },
+  "findings": [
+    {
+      "severity": "info",
+      "code": "nat_cost",
+      "message": "3 NAT gateways cost roughly $99/month before data transfer. One NAT gateway is cheaper if you can accept AZ-level risk.",
+      "resource_id": "nat"
+    }
+  ],
+  "estimated_monthly_cost_usd": 231.0
+}
