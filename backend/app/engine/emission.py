@@ -60,6 +60,11 @@ def audit(
     for resource in spec.resources:
         if resource.kind in CONDITIONAL:
             continue
+        if resource.is_external:
+            # Looked up with a data source, so it correctly produces no
+            # `resource` declaration. Counting it as missing would report the
+            # feature working as a defect.
+            continue
         tf_type = service_for(resource.kind, spec.provider).terraform_type
         expected[tf_type] += 1
         kinds_for_type.setdefault(tf_type, set()).add(resource.name)

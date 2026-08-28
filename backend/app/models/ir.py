@@ -140,6 +140,24 @@ class Resource(BaseModel):
             "dependency that made it mandatory. Never empty in a generated spec."
         ),
     )
+    external_id: str | None = Field(
+        None,
+        description=(
+            "An existing AWS resource id the user named, e.g. 'vpc-0abc123'. "
+            "The resource is looked up with a data source and never created: "
+            "generating a second VPC when the user asked to deploy into their "
+            "existing one is the difference between adding to an environment "
+            "and building a parallel one."
+        ),
+    )
+    display_name: str | None = Field(
+        None,
+        description="Name the user gave this resource, used for the Name tag.",
+    )
+
+    @property
+    def is_external(self) -> bool:
+        return self.external_id is not None
 
     @field_validator("id")
     @classmethod

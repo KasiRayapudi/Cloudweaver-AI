@@ -40,6 +40,52 @@ def _capped(suffix: str, limit: int = TIGHTEST_LIMIT) -> Raw:
     return Raw(f'"${{local.name_short}}-{suffix}"')
 
 
+def _vpc_id(spec: InfrastructureSpec) -> Raw | None:
+    """Reference to the VPC, whether this project creates it or reads it.
+
+    Deploying into an existing VPC changes every reference in the project from
+    ``aws_vpc.main.id`` to ``data.aws_vpc.main.id``, so the choice lives in one
+    function rather than at each of the call sites.
+    """
+    vpc = spec.first(Kind.VPC)
+    if vpc is None:
+        return None
+    prefix = "data." if vpc.is_external else ""
+    return Raw(f"{prefix}aws_vpc.{_name(vpc)}.id")
+
+
+def _vpc_cidr(spec: InfrastructureSpec) -> Raw:
+    """The address range to carve subnets out of.
+
+    For an existing VPC this must be read from the data source: deriving
+    subnets from the default var.vpc_cidr would place them outside the range
+    the VPC actually owns, and the apply would fail.
+    """
+    vpc = spec.first(Kind.VPC)
+    if vpc is not None and vpc.is_external:
+        return Raw(f"data.aws_vpc.{_name(vpc)}.cidr_block")
+    return var("vpc_cidr")
+
+
+def _named_tags(resource: Resource, fallback: str) -> Raw:
+    """Name tag using the name the user gave, when they gave one."""
+    return _tags(("Name", resource.display_name or fallback))
+
+
+def _subnet_ids(spec: InfrastructureSpec, subnet: Resource) -> Raw:
+    """All ids for a subnet band, whether created here or looked up."""
+    if subnet.is_external:
+        return Raw(f"data.aws_subnets.{_name(subnet)}.ids")
+    return Raw(f"aws_subnet.{_name(subnet)}[*].id")
+
+
+def _subnet_id(spec: InfrastructureSpec, subnet: Resource, index: str) -> Raw:
+    """One subnet id from the band, by index."""
+    if subnet.is_external:
+        return Raw(f"data.aws_subnets.{_name(subnet)}.ids[{index}]")
+    return Raw(f"aws_subnet.{_name(subnet)}[{index}].id")
+
+
 def _tags(*extra: tuple[str, str]) -> Raw:
     if not extra:
         return Raw("local.tags")
@@ -335,23 +381,36 @@ class TerraformGenerator:
             self._elastic_ip(f, spec)
             return f
 
-        b = f.resource("aws_vpc", _name(vpc))
-        b.set("cidr_block", var("vpc_cidr"))
-        b.set("enable_dns_support", True)
-        b.set("enable_dns_hostnames", True)
-        b.set("tags", _tags(("Name", "${local.name_prefix}-vpc")))
+        if vpc.is_external:
+            # The VPC already exists: read it rather than creating a second one
+            # alongside the user's.
+            lookup = f.data("aws_vpc", _name(vpc),
+                            "Existing VPC named in the requirement.")
+            lookup.set("id", vpc.external_id)
+        else:
+            b = f.resource("aws_vpc", _name(vpc))
+            b.set("cidr_block", var("vpc_cidr"))
+            b.set("enable_dns_support", True)
+            b.set("enable_dns_hostnames", True)
+            b.set("tags", _tags(("Name", "${local.name_prefix}-vpc")))
 
-        vpc_id = ref("aws_vpc", _name(vpc), "id")
+        vpc_id = _vpc_id(spec)
 
         public = spec.first(Kind.SUBNET_PUBLIC)
         private = spec.first(Kind.SUBNET_PRIVATE)
 
-        if public is not None:
+        if public is not None and public.is_external:
+            lookup = f.data("aws_subnets", _name(public),
+                            "Existing public subnets named in the requirement.")
+            filt = lookup.block("filter")
+            filt.set("name", "vpc-id")
+            filt.set("values", [vpc_id])
+        elif public is not None:
             s = f.resource("aws_subnet", _name(public),
                            "One public subnet per availability zone.")
             s.set("count", var("az_count"))
             s.set("vpc_id", vpc_id)
-            s.set("cidr_block", Raw("cidrsubnet(var.vpc_cidr, 8, count.index)"))
+            s.set("cidr_block", Raw(f"cidrsubnet({_vpc_cidr(spec).expr}, 8, count.index)"))
             s.set("availability_zone",
                   Raw("data.aws_availability_zones.available.names[count.index]"))
             s.set("map_public_ip_on_launch", True)
@@ -360,12 +419,18 @@ class TerraformGenerator:
                 ("Tier", "public"),
             ))
 
-        if private is not None:
+        if private is not None and private.is_external:
+            lookup = f.data("aws_subnets", _name(private),
+                            "Existing private subnets named in the requirement.")
+            filt = lookup.block("filter")
+            filt.set("name", "vpc-id")
+            filt.set("values", [vpc_id])
+        elif private is not None:
             s = f.resource("aws_subnet", _name(private),
                            "One private subnet per availability zone.")
             s.set("count", var("az_count"))
             s.set("vpc_id", vpc_id)
-            s.set("cidr_block", Raw("cidrsubnet(var.vpc_cidr, 8, count.index + 10)"))
+            s.set("cidr_block", Raw(f"cidrsubnet({_vpc_cidr(spec).expr}, 8, count.index + 10)"))
             s.set("availability_zone",
                   Raw("data.aws_availability_zones.available.names[count.index]"))
             s.set("map_public_ip_on_launch", False)
@@ -400,7 +465,7 @@ class TerraformGenerator:
             if public is not None:
                 assoc = f.resource("aws_route_table_association", "public")
                 assoc.set("count", var("az_count"))
-                assoc.set("subnet_id", Raw(f"aws_subnet.{_name(public)}[count.index].id"))
+                assoc.set("subnet_id", _subnet_id(spec, public, "count.index"))
                 assoc.set("route_table_id", ref("aws_route_table", "public", "id"))
 
         nat = spec.first(Kind.NAT_GATEWAY)
@@ -422,7 +487,7 @@ class TerraformGenerator:
             n.set("count", Raw(str(nat.count)))
             if nat_eip is not None:
                 n.set("allocation_id", Raw(f"aws_eip.{_name(nat_eip)}[count.index].id"))
-            n.set("subnet_id", Raw(f"aws_subnet.{_name(public)}[count.index].id"))
+            n.set("subnet_id", _subnet_id(spec, public, "count.index"))
             n.set("tags", _tags(("Name", "${local.name_prefix}-nat-${count.index + 1}")))
             n.set("depends_on", [Raw(f"aws_internet_gateway.{_name(igw)}")] if igw else [])
 
@@ -445,7 +510,7 @@ class TerraformGenerator:
 
             assoc = f.resource("aws_route_table_association", "private")
             assoc.set("count", var("az_count"))
-            assoc.set("subnet_id", Raw(f"aws_subnet.{_name(private)}[count.index].id"))
+            assoc.set("subnet_id", _subnet_id(spec, private, "count.index"))
             assoc.set("route_table_id", Raw("aws_route_table.private[count.index].id"))
 
         if nat_eip is None:
@@ -484,9 +549,14 @@ class TerraformGenerator:
         vpc = spec.first(Kind.VPC)
         if vpc is None:
             return f
-        vpc_id = ref("aws_vpc", _name(vpc), "id")
+        vpc_id = _vpc_id(spec)
 
         for sg in spec.of_kind(Kind.SECURITY_GROUP):
+            if sg.is_external:
+                lookup = f.data("aws_security_group", _name(sg),
+                                "Existing security group named in the requirement.")
+                lookup.set("id", sg.external_id)
+                continue
             b = f.resource("aws_security_group", _name(sg))
             b.set("name", _prefixed(sg.id.replace("_", "-")))
             b.set("description", f"{sg.name} generated from the requirement description")
@@ -503,11 +573,11 @@ class TerraformGenerator:
                 if source in ("0.0.0.0/0",):
                     ing.set("cidr_blocks", ["0.0.0.0/0"])
                 elif source == "vpc":
-                    ing.set("cidr_blocks", [var("vpc_cidr")])
+                    ing.set("cidr_blocks", [_vpc_cidr(spec)])
                 elif spec.get(source) is not None:
                     ing.set("security_groups", [ref("aws_security_group", source, "id")])
                 else:
-                    ing.set("cidr_blocks", [var("vpc_cidr")])
+                    ing.set("cidr_blocks", [_vpc_cidr(spec)])
 
             egress = b.block("egress")
             egress.set("description", "Allow all outbound traffic")
@@ -541,7 +611,7 @@ class TerraformGenerator:
             b.set("instance_type", vm.properties.get("instance_type", "t3.micro"))
             if app_subnet is not None:
                 index = "count.index" if vm.count > 1 else "0"
-                b.set("subnet_id", Raw(f"aws_subnet.{_name(app_subnet)}[{index}].id"))
+                b.set("subnet_id", _subnet_id(spec, app_subnet, index))
             sg = spec.get("app_sg")
             if sg is not None:
                 b.set("vpc_security_group_ids", [ref("aws_security_group", "app_sg", "id")])
@@ -554,14 +624,14 @@ class TerraformGenerator:
             root.set("volume_type", "gp3")
             root.set("encrypted", True)
             suffix = "-${count.index + 1}" if vm.count > 1 else ""
-            b.set("tags", _tags(("Name", f"${{local.name_prefix}}-app{suffix}")))
+            b.set("tags", _named_tags(vm, f"${{local.name_prefix}}-app{suffix}"))
 
         for bastion in spec.of_kind(Kind.BASTION):
             b = f.resource("aws_instance", _name(bastion))
             b.set("ami", ref("data", "aws_ami", "os", "id"))
             b.set("instance_type", bastion.properties.get("instance_type", "t3.micro"))
             if public is not None:
-                b.set("subnet_id", Raw(f"aws_subnet.{_name(public)}[0].id"))
+                b.set("subnet_id", _subnet_id(spec, public, "0"))
             b.set("associate_public_ip_address", True)
             if spec.get("bastion_sg") is not None:
                 b.set("vpc_security_group_ids", [ref("aws_security_group", "bastion_sg", "id")])
@@ -593,7 +663,7 @@ class TerraformGenerator:
             g.set("max_size", asg.properties.get("max_size", 4))
             g.set("desired_capacity", asg.properties.get("desired_capacity", 2))
             if app_subnet is not None:
-                g.set("vpc_zone_identifier", Raw(f"aws_subnet.{_name(app_subnet)}[*].id"))
+                g.set("vpc_zone_identifier", _subnet_ids(spec, app_subnet))
             g.set("health_check_type", "ELB" if spec.has(Kind.LOAD_BALANCER) else "EC2")
             g.set("health_check_grace_period", 300)
             if spec.has(Kind.TARGET_GROUP):
@@ -697,7 +767,7 @@ class TerraformGenerator:
             svc.set("launch_type", "FARGATE")
             net = svc.block("network_configuration")
             if app_subnet is not None:
-                net.set("subnets", Raw(f"aws_subnet.{_name(app_subnet)}[*].id"))
+                net.set("subnets", _subnet_ids(spec, app_subnet))
             if spec.get("app_sg") is not None:
                 net.set("security_groups", [ref("aws_security_group", "app_sg", "id")])
             net.set("assign_public_ip", False)
@@ -716,7 +786,7 @@ class TerraformGenerator:
             c.set("version", eks.properties.get("version", "1.29"))
             vpc_cfg = c.block("vpc_config")
             if app_subnet is not None:
-                vpc_cfg.set("subnet_ids", Raw(f"aws_subnet.{_name(app_subnet)}[*].id"))
+                vpc_cfg.set("subnet_ids", _subnet_ids(spec, app_subnet))
             vpc_cfg.set("endpoint_private_access", True)
             vpc_cfg.set("endpoint_public_access", True)
             c.set("tags", _tags())
@@ -726,7 +796,7 @@ class TerraformGenerator:
             ng.set("node_group_name", _prefixed("ng"))
             ng.set("node_role_arn", ref("aws_iam_role", "eks_node", "arn"))
             if app_subnet is not None:
-                ng.set("subnet_ids", Raw(f"aws_subnet.{_name(app_subnet)}[*].id"))
+                ng.set("subnet_ids", _subnet_ids(spec, app_subnet))
             ng.set("instance_types", [eks.properties.get("node_instance_type", "t3.medium")])
             scaling = ng.block("scaling_config")
             node_count = eks.properties.get("node_count", 2)
@@ -759,7 +829,7 @@ class TerraformGenerator:
             # One subnet group serves every database in the VPC.
             sn = f.resource("aws_db_subnet_group", "main")
             sn.set("name", _prefixed("db-subnets"))
-            sn.set("subnet_ids", Raw(f"aws_subnet.{_name(private)}[*].id"))
+            sn.set("subnet_ids", _subnet_ids(spec, private))
             sn.set("tags", _tags())
 
         for db in databases:
@@ -817,7 +887,7 @@ class TerraformGenerator:
             if private is not None:
                 sn = f.resource("aws_elasticache_subnet_group", "main")
                 sn.set("name", _prefixed("cache-subnets"))
-                sn.set("subnet_ids", Raw(f"aws_subnet.{_name(private)}[*].id"))
+                sn.set("subnet_ids", _subnet_ids(spec, private))
 
             b = f.resource("aws_elasticache_replication_group", _name(cache))
             b.set("replication_group_id", _capped("redis"))
@@ -837,10 +907,15 @@ class TerraformGenerator:
 
         for bucket in spec.of_kind(Kind.OBJECT_STORAGE):
             b = f.resource("aws_s3_bucket", _name(bucket))
-            b.set("bucket", Raw(
-                f'"${{local.name_prefix}}-{bucket.id.replace("_", "-")}-'
-                '${random_id.bucket_suffix.hex}"'
-            ))
+            # A stated bucket name is used verbatim: S3 names are global and
+            # the user asking for one means they have chosen it.
+            if bucket.display_name:
+                b.set("bucket", bucket.display_name)
+            else:
+                b.set("bucket", Raw(
+                    f'"${{local.name_prefix}}-{bucket.id.replace("_", "-")}-'
+                    '${random_id.bucket_suffix.hex}"'
+                ))
             b.set("tags", _tags())
 
             ver = f.resource("aws_s3_bucket_versioning", f"{_name(bucket)}_versioning")
@@ -877,7 +952,7 @@ class TerraformGenerator:
             if private is not None and not spec.has(Kind.SQL_DATABASE):
                 sn = f.resource("aws_db_subnet_group", "main")
                 sn.set("name", _prefixed("db-subnets"))
-                sn.set("subnet_ids", Raw(f"aws_subnet.{_name(private)}[*].id"))
+                sn.set("subnet_ids", _subnet_ids(spec, private))
                 sn.set("tags", _tags())
 
             pw = f.resource("random_password", f"{_name(cluster)}_master",
@@ -924,7 +999,7 @@ class TerraformGenerator:
             if private is not None:
                 sn = f.resource("aws_redshift_subnet_group", "main")
                 sn.set("name", _prefixed("redshift-subnets"))
-                sn.set("subnet_ids", Raw(f"aws_subnet.{_name(private)}[*].id"))
+                sn.set("subnet_ids", _subnet_ids(spec, private))
                 sn.set("tags", _tags())
 
             pw = f.resource("random_password", "redshift")
@@ -966,7 +1041,7 @@ class TerraformGenerator:
                 mt = f.resource("aws_efs_mount_target", "main")
                 mt.set("count", var("az_count"))
                 mt.set("file_system_id", ref("aws_efs_file_system", _name(efs), "id"))
-                mt.set("subnet_id", Raw(f"aws_subnet.{_name(private)}[count.index].id"))
+                mt.set("subnet_id", _subnet_id(spec, private, "count.index"))
                 if spec.get("app_sg") is not None:
                     mt.set("security_groups", [ref("aws_security_group", "app_sg", "id")])
 
@@ -1020,9 +1095,9 @@ class TerraformGenerator:
             if tf_kind == "application" and spec.get("alb_sg") is not None:
                 b.set("security_groups", [ref("aws_security_group", "alb_sg", "id")])
             if tf_kind == "gateway" and private is not None:
-                b.set("subnets", Raw(f"aws_subnet.{_name(private)}[*].id"))
+                b.set("subnets", _subnet_ids(spec, private))
             elif tf_kind != "gateway" and public is not None:
-                b.set("subnets", Raw(f"aws_subnet.{_name(public)}[*].id"))
+                b.set("subnets", _subnet_ids(spec, public))
             b.set("enable_deletion_protection", spec.environment == "prod")
             if tf_kind == "application":
                 b.set("enable_http2", True)
@@ -1555,8 +1630,13 @@ class TerraformGenerator:
         vpc = spec.first(Kind.VPC)
         if vpc is not None:
             f.output("vpc_id").set_all({
-                "description": "ID of the generated VPC",
-                "value": ref("aws_vpc", _name(vpc), "id"),
+                "description": (
+                    "ID of the VPC this project deploys into"
+                    if vpc.is_external else "ID of the generated VPC"
+                ),
+                # Must follow the same created-or-looked-up rule as every
+                # other reference, or the output points at nothing.
+                "value": _vpc_id(spec),
             })
 
         lb = spec.first(Kind.LOAD_BALANCER)

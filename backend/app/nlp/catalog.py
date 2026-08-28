@@ -419,6 +419,49 @@ CLAUSE_BOUNDARIES: tuple[str, ...] = (
     " initially ", " to start ", " just ", " only ", " instead ",
 )
 
+# AWS resource id prefixes, mapped to the kind they identify. A prompt naming
+# one of these is asking to deploy into infrastructure that already exists.
+EXTERNAL_ID_PREFIXES: dict[str, Kind] = {
+    "vpc-": Kind.VPC,
+    "subnet-": Kind.SUBNET_PRIVATE,   # refined by nearby wording
+    "sg-": Kind.SECURITY_GROUP,
+    "igw-": Kind.INTERNET_GATEWAY,
+    "nat-": Kind.NAT_GATEWAY,
+    "rtb-": Kind.ROUTE_TABLE,
+    "eipalloc-": Kind.ELASTIC_IP,
+}
+
+# Kinds the generator can currently look up rather than create. Anything else
+# is reported honestly instead of being silently created as new.
+EXTERNAL_SUPPORTED: frozenset[Kind] = frozenset({
+    Kind.VPC, Kind.SUBNET_PUBLIC, Kind.SUBNET_PRIVATE, Kind.SECURITY_GROUP,
+})
+
+# Requests for more than one of something the model cannot yet hold. The
+# shared model keys resources by kind, so a second region, environment or VPC
+# collapses into the first. Detecting these lets the system say so instead of
+# quietly generating half of what was asked for.
+MULTIPLICITY_MARKERS: dict[str, tuple[str, ...]] = {
+    "region": (
+        "multi region", "multi-region", "multiple regions", "another region",
+        "second region", "cross region", "cross-region", "replicated to",
+        "failover region", "dr region", "disaster recovery region",
+    ),
+    "environment": (
+        "dev and prod", "dev and production", "staging and production",
+        "multiple environments", "each environment", "per environment",
+        "dev staging and prod", "test and prod",
+    ),
+    "account": (
+        "multiple accounts", "multi account", "multi-account",
+        "separate accounts", "per account", "cross account", "cross-account",
+    ),
+    "vpc": (
+        "two vpcs", "multiple vpcs", "second vpc", "vpc peering", "peered",
+        "three vpcs",
+    ),
+}
+
 # Asking for any of these means the listener terminates TLS.
 TLS_MARKERS: tuple[str, ...] = (
     "https", "tls", "ssl", "certificate", "acm", "encrypted in transit",

@@ -36,10 +36,13 @@ from app.nlp.catalog import (
     DEFAULT_OS,
     ENVIRONMENT_CANONICAL,
     ENVIRONMENTS,
+    EXTERNAL_ID_PREFIXES,
+    EXTERNAL_SUPPORTED,
     HEDGE_CUES,
     LEXICON,
     LEXICON_TOKENS,
     LOAD_BALANCER_TRIGGERS,
+    MULTIPLICITY_MARKERS,
     NEGATION_CUES,
     NEGATION_EXEMPTIONS,
     NEGATION_WINDOW,
@@ -81,6 +84,21 @@ _INSTANCE_TYPE_RE = re.compile(
 )
 
 _STORAGE_RE = re.compile(r"\b(\d{1,5})\s*(gb|gib|tb|tib)\b")
+
+# A dotted quad with a prefix length: 10.0.0.0/16, 172.16.32.0/20.
+_CIDR_RE = re.compile(r"\b((?:\d{1,3}\.){3}\d{1,3}/(?:[0-9]|[12][0-9]|3[0-2]))\b")
+
+# "called web-01", "named my-uploads", "tagged payments-api".
+_NAME_RE = re.compile(
+    r"\b(?:called|named|tagged|labelled|labeled)\s+"
+    r"['\"]?([a-z][a-z0-9][a-z0-9\-_.]{0,40})['\"]?"
+)
+
+# AWS resource identifiers: vpc-0abc123, sg-0123456789abcdef, ami-0abc1234.
+_EXTERNAL_ID_RE = re.compile(
+    r"\b((?:vpc|subnet|sg|igw|nat|rtb|eipalloc|ami)-[0-9a-f]{8,17})\b"
+)
+
 _PORT_RE = re.compile(r"\bport\s+(\d{2,5})\b")
 _AZ_RE = re.compile(r"\b(\d)\s*(?:availability zones?|azs?)\b")
 _NODE_COUNT_RE = re.compile(
@@ -157,6 +175,9 @@ class RuleExtractor(Extractor):
 
         consumed: list[Span] = []
         seen_kinds: dict[Kind, Resource] = {}
+        # Where each resource's phrase sat, so a stated name or id can be
+        # bound to the service it actually follows.
+        spans: dict[str, tuple[int, int]] = {}
 
         for entry in LEXICON:
             # Longest phrase first so "application load balancer" wins over "alb".
@@ -206,14 +227,199 @@ class RuleExtractor(Extractor):
                     )
                     spec.add(resource)
                     seen_kinds[entry.kind] = resource
+                    spans[resource.id] = (start, end)
 
         self._merge_compute(text, spec, seen_kinds)
         self._merge_databases(spec, seen_kinds)
+        self._apply_stated_values(text, spec, seen_kinds, spans)
+        self._flag_multiplicity(text, spec)
         self._apply_triggers(text, spec, seen_kinds)
         self._attach_properties(text, spec)
         self._flag_ambiguity(text, spec, seen_kinds)
         spec.summary = self._summary(spec)
         return spec
+
+    # -- stated values -----------------------------------------------------
+
+    def _apply_stated_values(
+        self,
+        text: str,
+        spec: InfrastructureSpec,
+        seen: dict[Kind, Resource],
+        spans: dict[str, tuple[int, int]],
+    ) -> None:
+        """Honour the concrete values in the requirement.
+
+        A stated CIDR, name or existing resource id is the least ambiguous
+        thing in a prompt. Overriding them with defaults produced designs that
+        quietly disagreed with the requirement they came from -- the user asked
+        for 172.16.0.0/16 and got 10.0.0.0/16.
+        """
+        self._apply_cidrs(text, spec, seen)
+        self._apply_names(text, spec, spans)
+        self._apply_external_ids(text, spec, seen)
+
+    @staticmethod
+    def _apply_cidrs(
+        text: str, spec: InfrastructureSpec, seen: dict[Kind, Resource]
+    ) -> None:
+        cidrs = list(dict.fromkeys(_CIDR_RE.findall(text)))
+        if not cidrs:
+            return
+
+        # 0.0.0.0/0 is a firewall rule, never an address range to allocate.
+        cidrs = [c for c in cidrs if c != "0.0.0.0/0"]
+        if not cidrs:
+            return
+
+        def prefix(cidr: str) -> int:
+            return int(cidr.split("/")[1])
+
+        # The widest range is the VPC; narrower ones are subnets inside it.
+        vpc_cidr = min(cidrs, key=prefix)
+        vpc = seen.get(Kind.VPC)
+        if vpc is not None:
+            vpc.properties["cidr_block"] = vpc_cidr
+            spec.note(f"Using the stated VPC CIDR {vpc_cidr}.")
+
+        subnet_cidrs = [c for c in cidrs if c != vpc_cidr]
+        if subnet_cidrs:
+            for kind in (Kind.SUBNET_PUBLIC, Kind.SUBNET_PRIVATE):
+                subnet = seen.get(kind)
+                if subnet is not None:
+                    subnet.properties["stated_cidrs"] = subnet_cidrs
+            spec.note(
+                "Subnet ranges were stated: "
+                + ", ".join(subnet_cidrs)
+                + ". They are emitted as explicit cidr_block values rather than "
+                "being derived from the VPC range."
+            )
+
+    @staticmethod
+    def _apply_names(
+        text: str, spec: InfrastructureSpec, spans: dict[str, tuple[int, int]]
+    ) -> None:
+        """Attach "called X" to the service phrase it immediately follows.
+
+        Uses the recorded match spans rather than re-searching the evidence
+        text: the evidence is a padded window, so searching for it inside the
+        prompt fails exactly when the naming phrase overlaps that padding.
+        """
+        for match in _NAME_RE.finditer(text):
+            name = match.group(1)
+            best: Resource | None = None
+            best_distance = 10**9
+            for resource in spec.resources:
+                span = spans.get(resource.id)
+                if span is None or resource.display_name:
+                    continue
+                distance = match.start() - span[1]
+                if 0 <= distance < best_distance:
+                    best, best_distance = resource, distance
+            # Beyond a short gap the name belongs to something else.
+            if best is not None and best_distance <= 12:
+                best.display_name = name
+                spec.note(f"{best.name} is named {name!r} in the requirement.")
+
+    @staticmethod
+    def _apply_external_ids(
+        text: str, spec: InfrastructureSpec, seen: dict[Kind, Resource]
+    ) -> None:
+        """Bind stated AWS ids to resources, or say they cannot be used."""
+        for identifier in dict.fromkeys(_EXTERNAL_ID_RE.findall(text)):
+            prefix = identifier.split("-")[0] + "-"
+
+            if prefix == "ami-":
+                # An AMI is a property of an instance, not a resource.
+                for resource in spec.of_kind(
+                    Kind.VM, Kind.AUTOSCALING_GROUP, Kind.BASTION
+                ):
+                    resource.properties["ami_id"] = identifier
+                spec.note(f"Launching from the stated AMI {identifier}.")
+                continue
+
+            kind = EXTERNAL_ID_PREFIXES.get(prefix)
+            if kind is None:
+                continue
+
+            if "public subnet" in text and kind is Kind.SUBNET_PRIVATE:
+                kind = Kind.SUBNET_PUBLIC
+
+            if kind not in EXTERNAL_SUPPORTED:
+                spec.warn(
+                    f"{identifier} refers to existing infrastructure that this "
+                    "generator cannot look up yet, so it was ignored rather "
+                    "than guessed at."
+                )
+                continue
+
+            existing = seen.get(kind)
+            if existing is None:
+                info = service_for(kind)
+                existing = Resource(
+                    id=slugify(kind.value), kind=kind, name=info.display,
+                    tier=info.tier, origin=Origin.EXPLICIT, confidence=0.99,
+                    evidence=identifier,
+                    reason=f"The requirement names the existing {identifier}.",
+                )
+                spec.add(existing)
+                seen[kind] = existing
+
+            existing.external_id = identifier
+            existing.reason = (
+                f"Looked up rather than created: the requirement names the "
+                f"existing {identifier}."
+            )
+            spec.note(
+                f"{existing.name} {identifier} already exists, so it is read "
+                "with a data source instead of being created."
+            )
+
+    @staticmethod
+    def _flag_multiplicity(text: str, spec: InfrastructureSpec) -> None:
+        """Say plainly when more than one of something was asked for.
+
+        The shared model holds one resource per kind, so a second region,
+        environment, account or VPC silently collapses into the first. Half a
+        design presented as a whole one is worse than an honest limitation,
+        so each of these is reported as a warning the user can see.
+        """
+        wording = {
+            "region": "more than one region",
+            "environment": "more than one environment",
+            "account": "more than one AWS account",
+            "vpc": "more than one VPC",
+        }
+        detected = {
+            dimension for dimension, markers in MULTIPLICITY_MARKERS.items()
+            if any(marker in text for marker in markers)
+        }
+
+        # Counting distinct mentions catches the phrasings no fixed list can:
+        # "a dev EC2 and a prod EC2" names two environments without ever
+        # using the words "multiple environments".
+        environments = {
+            ENVIRONMENT_CANONICAL.get(env, env)
+            for env in ENVIRONMENTS
+            if re.search(r"\b" + re.escape(env) + r"\b", text)
+        }
+        if len(environments) > 1:
+            detected.add("environment")
+
+        regions = {
+            region for alias, region in REGION_ALIASES.items()
+            if re.search(r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])", text)
+        }
+        if len(regions) > 1:
+            detected.add("region")
+
+        for dimension in sorted(detected):
+                spec.warn(
+                    f"The requirement describes {wording[dimension]}. This "
+                    f"design covers a single {dimension} only: generate one "
+                    "project per "
+                    f"{dimension} until multi-{dimension} support lands."
+                )
 
     # -- provider ----------------------------------------------------------
 

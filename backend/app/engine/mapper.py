@@ -227,8 +227,11 @@ class ResourceMapper:
         if vpc is None:
             return
 
-        vpc.properties.setdefault("cidr_block", "10.0.0.0/16")
-        vpc.properties.setdefault("enable_dns_hostnames", True)
+        if not vpc.is_external:
+            # An existing VPC already has a range; choosing one for it would
+            # be describing infrastructure we do not control.
+            vpc.properties.setdefault("cidr_block", "10.0.0.0/16")
+            vpc.properties.setdefault("enable_dns_hostnames", True)
 
         azs = spec.availability_zones
         for subnet in spec.of_kind(Kind.SUBNET_PUBLIC):

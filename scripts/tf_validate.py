@@ -74,6 +74,14 @@ CORPUS: dict[str, str] = {
         "two web servers."
     ),
     "gateway-lb": "A gateway load balancer for a firewall appliance fleet in private subnets.",
+    "existing-vpc": (
+        "An EC2 instance and a security group in my existing VPC "
+        "vpc-0abc123def456."
+    ),
+    "stated-values": (
+        "A VPC with CIDR 172.16.0.0/16, an EC2 instance called web-01 from "
+        "ami-0abcdef1234567890, and an S3 bucket named payments-uploads."
+    ),
 }
 
 BOOTSTRAP_VERSIONS = """terraform {
