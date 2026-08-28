@@ -1,0 +1,282 @@
+/*
+ * Design tokens.
+ *
+ * Every colour, size, weight and duration in the application resolves to a
+ * token defined here. Components never hard-code a literal value, which is
+ * what makes the light and dark themes provably consistent rather than
+ * consistent by inspection.
+ *
+ * Theme handling covers three states, not two: an explicit choice stamps
+ * data-theme on the root, and the default "system" setting stamps nothing --
+ * so the media query has to carry the un-stamped case on its own.
+ */
+
+:root {
+  /* ---- brand ------------------------------------------------------- */
+  /* Teal reads as infrastructure without borrowing AWS orange or
+     HashiCorp purple, and stays legible on both grounds. */
+  --brand-50:  #eefaf8;
+  --brand-100: #d3f2ee;
+  --brand-200: #a8e5dd;
+  --brand-300: #6fd2c6;
+  --brand-400: #38b6a8;
+  --brand-500: #199a8d;
+  --brand-600: #0f7d73;
+  --brand-700: #10635d;
+  --brand-800: #124f4b;
+  --brand-900: #13423f;
+
+  /* ---- neutrals ---------------------------------------------------- */
+  /* Biased a few degrees toward the brand hue: a pure grey next to a
+     saturated accent reads as unconsidered. */
+  --slate-0:   #ffffff;
+  --slate-25:  #fbfcfd;
+  --slate-50:  #f6f8f9;
+  --slate-100: #eef1f4;
+  --slate-200: #e1e6ea;
+  --slate-300: #cbd3da;
+  --slate-400: #97a4b0;
+  --slate-500: #6b7885;
+  --slate-600: #4e5a67;
+  --slate-700: #3a4551;
+  --slate-800: #262f39;
+  --slate-850: #1c242c;
+  --slate-900: #141b22;
+  --slate-950: #0d1319;
+
+  /* ---- semantic ---------------------------------------------------- */
+  --red-500:    #dc2626;
+  --red-600:    #b91c1c;
+  --amber-500:  #d97706;
+  --amber-600:  #b45309;
+  --green-500:  #059669;
+  --green-600:  #047857;
+  --blue-500:   #2563eb;
+  --violet-500: #7c3aed;
+
+  /* ---- typography -------------------------------------------------- */
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* A 1.2 scale, rounded to whole pixels so text never lands off-grid. */
+  --text-2xs: 0.6875rem;  /* 11px */
+  --text-xs:  0.75rem;    /* 12px */
+  --text-sm:  0.8125rem;  /* 13px */
+  --text-md:  0.875rem;   /* 14px - body default for dense UI */
+  --text-base:0.9375rem;  /* 15px */
+  --text-lg:  1.0625rem;  /* 17px */
+  --text-xl:  1.25rem;    /* 20px */
+  --text-2xl: 1.5rem;     /* 24px */
+  --text-3xl: 1.875rem;   /* 30px */
+  --text-4xl: 2.375rem;   /* 38px */
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.4;
+  --leading-normal: 1.55;
+  --leading-relaxed: 1.7;
+
+  --tracking-tight: -0.014em;
+  --tracking-wide: 0.04em;
+  --tracking-caps: 0.07em;
+
+  /* ---- spacing ----------------------------------------------------- */
+  /* 4px base. Named by step, not by pixel, so the rhythm survives a
+     future change of base unit. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+
+  /* ---- radii ------------------------------------------------------- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
+
+  /* ---- motion ------------------------------------------------------ */
+  /* Fast enough to feel instant, slow enough to read as intentional. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-instant: 80ms;
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
+  --duration-slow: 380ms;
+
+  /* ---- layout ------------------------------------------------------ */
+  --sidebar-width: 248px;
+  --sidebar-collapsed: 60px;
+  --topbar-height: 56px;
+  --content-max: 1320px;
+
+  --z-base: 1;
+  --z-sticky: 20;
+  --z-drawer: 40;
+  --z-overlay: 60;
+  --z-toast: 80;
+}
+
+/* ====================================================================
+   Light theme -- the default, defined on bare :root so the un-stamped
+   document is always fully painted.
+   ==================================================================== */
+:root {
+  --bg-canvas: var(--slate-50);
+  --bg-surface: var(--slate-0);
+  --bg-surface-raised: var(--slate-0);
+  --bg-subtle: var(--slate-100);
+  --bg-inset: var(--slate-50);
+  --bg-hover: var(--slate-100);
+  --bg-active: var(--slate-200);
+  --bg-brand-subtle: var(--brand-50);
+  --bg-overlay: rgb(20 27 34 / 0.42);
+
+  --fg-default: var(--slate-800);
+  --fg-muted: var(--slate-600);
+  --fg-subtle: var(--slate-500);
+  --fg-faint: var(--slate-400);
+  --fg-on-brand: #ffffff;
+  --fg-brand: var(--brand-700);
+
+  --border-default: var(--slate-200);
+  --border-strong: var(--slate-300);
+  --border-subtle: var(--slate-100);
+  --border-brand: var(--brand-500);
+
+  --accent: var(--brand-600);
+  --accent-hover: var(--brand-700);
+  --accent-fg: #ffffff;
+
+  --danger: var(--red-600);
+  --danger-bg: #fef2f2;
+  --warning: var(--amber-600);
+  --warning-bg: #fffbeb;
+  --success: var(--green-600);
+  --success-bg: #ecfdf5;
+  --info: var(--blue-500);
+  --info-bg: #eff6ff;
+
+  /* Elevation as a ramp, not one shadow reused everywhere. */
+  --shadow-xs: 0 1px 2px rgb(20 27 34 / 0.05);
+  --shadow-sm: 0 1px 3px rgb(20 27 34 / 0.07), 0 1px 2px rgb(20 27 34 / 0.04);
+  --shadow-md: 0 4px 12px rgb(20 27 34 / 0.08), 0 1px 3px rgb(20 27 34 / 0.05);
+  --shadow-lg: 0 12px 28px rgb(20 27 34 / 0.12), 0 2px 6px rgb(20 27 34 / 0.06);
+  --shadow-xl: 0 24px 56px rgb(20 27 34 / 0.16), 0 4px 12px rgb(20 27 34 / 0.08);
+  --ring: 0 0 0 3px rgb(25 154 141 / 0.28);
+}
+
+/* ====================================================================
+   Dark theme -- tokens only, so every component follows automatically.
+   Guarded so an explicit light choice beats a dark operating system.
+   ==================================================================== */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-canvas: var(--slate-950);
+    --bg-surface: var(--slate-900);
+    --bg-surface-raised: var(--slate-850);
+    --bg-subtle: var(--slate-850);
+    --bg-inset: #0a1015;
+    --bg-hover: var(--slate-800);
+    --bg-active: var(--slate-700);
+    --bg-brand-subtle: rgb(25 154 141 / 0.14);
+    --bg-overlay: rgb(5 8 11 / 0.66);
+
+    --fg-default: #e7edf3;
+    --fg-muted: #a7b4c0;
+    --fg-subtle: #8494a2;
+    --fg-faint: #61707e;
+    --fg-brand: var(--brand-300);
+
+    --border-default: #2a343e;
+    --border-strong: #3a4651;
+    --border-subtle: #1f272f;
+    --border-brand: var(--brand-400);
+
+    --accent: var(--brand-400);
+    --accent-hover: var(--brand-300);
+    --accent-fg: #05201e;
+
+    --danger: #f87171;
+    --danger-bg: rgb(220 38 38 / 0.14);
+    --warning: #fbbf24;
+    --warning-bg: rgb(217 119 6 / 0.14);
+    --success: #34d399;
+    --success-bg: rgb(5 150 105 / 0.14);
+    --info: #60a5fa;
+    --info-bg: rgb(37 99 235 / 0.14);
+
+    /* Shadows carry less information on a dark ground, so elevation
+       leans on a lighter surface plus a subtle ring instead. */
+    --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.45), 0 1px 2px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 14px rgb(0 0 0 / 0.5);
+    --shadow-lg: 0 14px 32px rgb(0 0 0 / 0.55);
+    --shadow-xl: 0 28px 64px rgb(0 0 0 / 0.62);
+    --ring: 0 0 0 3px rgb(56 182 168 / 0.34);
+  }
+}
+
+/* Explicit dark choice wins in the other direction too. */
+:root[data-theme="dark"] {
+  --bg-canvas: var(--slate-950);
+  --bg-surface: var(--slate-900);
+  --bg-surface-raised: var(--slate-850);
+  --bg-subtle: var(--slate-850);
+  --bg-inset: #0a1015;
+  --bg-hover: var(--slate-800);
+  --bg-active: var(--slate-700);
+  --bg-brand-subtle: rgb(25 154 141 / 0.14);
+  --bg-overlay: rgb(5 8 11 / 0.66);
+
+  --fg-default: #e7edf3;
+  --fg-muted: #a7b4c0;
+  --fg-subtle: #8494a2;
+  --fg-faint: #61707e;
+  --fg-brand: var(--brand-300);
+
+  --border-default: #2a343e;
+  --border-strong: #3a4651;
+  --border-subtle: #1f272f;
+  --border-brand: var(--brand-400);
+
+  --accent: var(--brand-400);
+  --accent-hover: var(--brand-300);
+  --accent-fg: #05201e;
+
+  --danger: #f87171;
+  --danger-bg: rgb(220 38 38 / 0.14);
+  --warning: #fbbf24;
+  --warning-bg: rgb(217 119 6 / 0.14);
+  --success: #34d399;
+  --success-bg: rgb(5 150 105 / 0.14);
+  --info: #60a5fa;
+  --info-bg: rgb(37 99 235 / 0.14);
+
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.45), 0 1px 2px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 14px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 14px 32px rgb(0 0 0 / 0.55);
+  --shadow-xl: 0 28px 64px rgb(0 0 0 / 0.62);
+  --ring: 0 0 0 3px rgb(56 182 168 / 0.34);
+}
+
+/* Resource category colours, used by the diagram legend and resource
+   chips so the palette matches the generated SVG exactly. */
+:root {
+  --cat-compute: #e08b3c;
+  --cat-traffic: #4a86d8;
+  --cat-data: #3f9c5f;
+  --cat-storage: #7b62d4;
+  --cat-security: #d9534f;
+  --cat-network: #7d8fa5;
+  --cat-integration: #c8558f;
+  --cat-ops: #a58a3c;
+}
