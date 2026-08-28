@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=68"]
+# 77+ understands the SPDX `license` string and `license-files`.
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,19 +9,33 @@ version = "1.0.0"
 description = "Generate a cloud architecture diagram and matching Terraform from a plain-language requirement."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
   "fastapi>=0.115",
-  "uvicorn[standard]>=0.34",
+  "uvicorn>=0.34",
   "pydantic>=2.10",
 ]
 
 [project.optional-dependencies]
 llm = ["anthropic>=0.42"]
-dev = ["pytest>=8.3", "httpx>=0.28"]
+# The uvicorn extras are a local-development convenience (reload, uvloop);
+# they are not needed by the deployed serverless function.
+dev = ["uvicorn[standard]>=0.34", "pytest>=8.3", "httpx>=0.28", "ruff>=0.8"]
 
 [project.scripts]
 iacgen = "cli:main"
+
+# The repository root holds backend/, frontend/, api/, docs/ and examples/
+# side by side, so setuptools cannot infer what to package. The importable
+# Python lives under backend/ and nowhere else.
+[tool.setuptools]
+package-dir = { "" = "backend" }
+py-modules = ["cli"]
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
