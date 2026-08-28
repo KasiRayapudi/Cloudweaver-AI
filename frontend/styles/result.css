@@ -746,3 +746,49 @@
   .node-drawer { position: static; max-height: none; }
   .diagram-stage { height: min(52dvh, 460px); }
 }
+
+/* ==================================================================
+   Mini map
+   ==================================================================
+   A scaled clone of the same SVG rather than a separately drawn
+   schematic: a clone cannot drift from the diagram it represents.
+   ================================================================== */
+.minimap {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 2;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  cursor: crosshair;
+  opacity: 0.94;
+  transition: opacity var(--duration-fast) var(--ease-out),
+              transform var(--duration-base) var(--ease-out);
+}
+.minimap:hover { opacity: 1; }
+.minimap.is-hidden { opacity: 0; pointer-events: none; transform: translateY(8px); }
+
+.minimap__inner {
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.minimap__inner svg { display: block; }
+
+.minimap__frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 1.5px solid var(--accent);
+  background: rgb(25 154 141 / 0.12);
+  border-radius: 2px;
+  pointer-events: none;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+@media (max-width: 720px) {
+  /* The map costs more screen than it earns on a phone. */
+  .minimap { display: none; }
+}

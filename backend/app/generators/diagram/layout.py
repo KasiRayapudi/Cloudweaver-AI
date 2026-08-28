@@ -22,13 +22,17 @@ from dataclasses import dataclass, field
 from app.models.ir import EdgeKind, InfrastructureSpec, Kind, Resource, Tier
 from app.nlp.catalog import service_for
 
-NODE_W = 178
-NODE_H = 68
-H_GAP = 34
-V_GAP = 78
-MARGIN = 40
-BAND_LABEL_W = 96
-SIDEBAR_GAP = 56
+# Geometry. Widened and given more air than the first pass: at 178x68 with a
+# 34px gutter the bands read as a wall of boxes rather than as tiers, and long
+# service names had nowhere to go.
+NODE_W = 200
+NODE_H = 78
+H_GAP = 44
+V_GAP = 96
+MARGIN = 44
+BAND_LABEL_W = 104
+SIDEBAR_GAP = 64
+CORNER = 12          # radius used when a connector turns
 
 # Bands, top to bottom. Resources are ranked into these.
 BAND_ORDER: tuple[tuple[str, tuple[Tier, ...]], ...] = (

@@ -12,7 +12,29 @@ from __future__ import annotations
 
 from xml.sax.saxutils import escape
 
-from app.generators.diagram.layout import INTERNET_ID, Layout, Node, RoutedEdge
+from app.generators.diagram.layout import CORNER, INTERNET_ID, Layout, Node, RoutedEdge
+
+# Service marks, drawn in a 16x16 box inside each node's icon tile.
+#
+# Deliberately geometric rather than facsimiles of the AWS icon set: those are
+# trademarked artwork, and a consistent hand-drawn set reads better at 16px
+# than shrunken official icons do. Each is a single stroked path so it takes
+# the node's own colour and stays legible in both themes.
+ICONS: dict[str, str] = {
+    "compute": "M2.5 4.2h11v3.1h-11z M2.5 8.7h11v3.1h-11z M4.4 5.8h.01 M4.4 10.3h.01",
+    "traffic": "M8 2.4v3.4 M8 5.8 3.4 9.6 M8 5.8l4.6 3.8 M2 9.8h2.8v3.4H2z"
+               " M6.6 9.8h2.8v3.4H6.6z M11.2 9.8H14v3.4h-2.8z",
+    "data": "M8 2.4c2.9 0 5 .9 5 2v7.2c0 1.1-2.1 2-5 2s-5-.9-5-2V4.4c0-1.1 2.1-2 5-2z"
+            " M3 4.4c0 1.1 2.1 2 5 2s5-.9 5-2 M3 8c0 1.1 2.1 2 5 2s5-.9 5-2",
+    "storage": "M2.8 3.4h10.4l-1.2 9.4a1 1 0 0 1-1 .8H5a1 1 0 0 1-1-.8z M2.8 3.4 8 1.6l5.2 1.8",
+    "security": "M8 1.8 13.2 4v4.2c0 3.1-2.2 5.2-5.2 6-3-.8-5.2-2.9-5.2-6V4z M5.9 8l1.5 1.5L10.3 6.6",
+    "network": "M8 2.2 13.4 5.3v6.2L8 14.6 2.6 11.5V5.3z M8 2.2v12.4 M2.6 5.3 8 8.4l5.4-3.1",
+    "integration": "M2.4 4.4h11.2v7.2H2.4z M2.4 4.4 8 8.8l5.6-4.4",
+    "ops": "M2.4 12.8h11.2 M4.4 12.8V8.6 M7.2 12.8V4.4 M10 12.8V7 M12.8 12.8V5.6",
+    "internet": "M8 1.9a6.1 6.1 0 1 0 0 12.2A6.1 6.1 0 0 0 8 1.9z M1.9 8h12.2"
+                " M8 1.9c1.7 1.8 2.6 4 2.6 6.1S9.7 12.3 8 14.1"
+                " M8 1.9C6.3 3.7 5.4 5.9 5.4 8s.9 4.3 2.6 6.1",
+}
 
 # category -> (fill, stroke, text)
 PALETTE: dict[str, tuple[str, str, str]] = {
@@ -51,22 +73,30 @@ def _css() -> str:
     light = "\n".join(
         f"    .fill-{cat} {{ fill: {fill}; stroke: {stroke}; }}\n"
         f"    .text-{cat} {{ fill: {text}; }}\n"
-        f"    .badge-{cat} {{ fill: {stroke}; }}"
+        f"    .badge-{cat} {{ fill: {stroke}; }}\n"
+        f"    .cat-{cat} .icon-mark path {{ stroke: {text}; }}"
         for cat, (fill, stroke, text) in PALETTE.items()
     )
     dark = "\n".join(
         f"      .fill-{cat} {{ fill: {fill}; stroke: {stroke}; }}\n"
         f"      .text-{cat} {{ fill: {text}; }}\n"
-        f"      .badge-{cat} {{ fill: {stroke}; }}"
+        f"      .badge-{cat} {{ fill: {stroke}; }}\n"
+        f"      .cat-{cat} .icon-mark path {{ stroke: {text}; }}"
         for cat, (fill, stroke, text) in DARK_PALETTE.items()
     )
     return f"""
   <style>
     .bg {{ fill: #ffffff; }}
     .node {{ stroke-width: 1.5; }}
-    .label {{ font: 600 13px 'Segoe UI', system-ui, sans-serif; }}
-    .sublabel {{ font: 400 10.5px 'Segoe UI', system-ui, sans-serif; opacity: .78; }}
-    .badge {{ font: 700 9px 'Segoe UI', system-ui, sans-serif; fill: #ffffff; }}
+    .label {{ font: 600 13.5px 'Inter', 'Segoe UI', system-ui, sans-serif;
+              letter-spacing: -.008em; }}
+    .sublabel {{ font: 400 11px 'Inter', 'Segoe UI', system-ui, sans-serif; opacity: .8; }}
+    .tag {{ font: 600 9px 'JetBrains Mono', ui-monospace, monospace;
+            letter-spacing: .09em; opacity: .58; }}
+    .badge {{ font: 700 9px 'Inter', 'Segoe UI', system-ui, sans-serif; fill: #ffffff; }}
+    .icon-tile {{ opacity: .16; }}
+    .icon-mark path {{ fill: none; stroke-width: 1.35; stroke-linecap: round;
+                       stroke-linejoin: round; }}
     .title {{ font: 700 17px 'Segoe UI', system-ui, sans-serif; fill: #1b2430; }}
     .subtitle {{ font: 400 11.5px 'Segoe UI', system-ui, sans-serif; fill: #64748b; }}
     .band {{ font: 600 10px 'Segoe UI', system-ui, sans-serif; fill: #94a3b8;
@@ -155,16 +185,46 @@ class SvgRenderer:
         )
 
     @staticmethod
+    def _rounded_path(points: list[tuple[float, float]]) -> str:
+        """Polyline with arcs at the turns.
+
+        A right-angled polyline reads as a wiring diagram; softening each
+        corner reads as a considered connector. The radius shrinks on short
+        segments so a tight route never produces a distorted arc.
+        """
+        if len(points) < 3:
+            return " ".join(
+                ("M" if i == 0 else "L") + f" {x:.1f} {y:.1f}"
+                for i, (x, y) in enumerate(points)
+            )
+
+        out = [f"M {points[0][0]:.1f} {points[0][1]:.1f}"]
+        for index in range(1, len(points) - 1):
+            previous, corner, following = points[index - 1], points[index], points[index + 1]
+
+            def shorten(origin, toward, limit):
+                dx, dy = toward[0] - origin[0], toward[1] - origin[1]
+                length = (dx * dx + dy * dy) ** 0.5 or 1
+                radius = min(limit, length / 2)
+                return (origin[0] + dx / length * radius, origin[1] + dy / length * radius)
+
+            entry = shorten(corner, previous, CORNER)
+            exit_ = shorten(corner, following, CORNER)
+            out.append(f"L {entry[0]:.1f} {entry[1]:.1f}")
+            out.append(f"Q {corner[0]:.1f} {corner[1]:.1f} {exit_[0]:.1f} {exit_[1]:.1f}")
+
+        last = points[-1]
+        out.append(f"L {last[0]:.1f} {last[1]:.1f}")
+        return " ".join(out)
+
+    @staticmethod
     def _edge(edge: RoutedEdge) -> str:
         if len(edge.points) < 2:
             return ""
         style, dash = EDGE_STYLE.get(edge.kind, ("solid", ""))
         cls = "edge" if style == "solid" else f"edge {style}"
         marker = "arrow-data" if style == "data" else "arrow"
-        path = " ".join(
-            ("M" if i == 0 else "L") + f" {x:.1f} {y:.1f}"
-            for i, (x, y) in enumerate(edge.points)
-        )
+        path = SvgRenderer._rounded_path(edge.points)
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
         out = (
             f'  <path class="{cls}" d="{path}"{dash_attr} '
@@ -187,33 +247,43 @@ class SvgRenderer:
         # resource in the shared model. Additive only: it changes no geometry,
         # no colour and no other output.
         parts = [
-            f'  <g class="node-group" data-resource-id="{escape(node.id)}" '
+            f'  <g class="node-group cat-{cat}" data-resource-id="{escape(node.id)}" '
             f'data-category="{escape(cat)}" tabindex="0" role="button" '
             f'aria-label="{escape(node.label)}">'
             f'<title>{title}</title>',
             f'    <rect class="node fill-{cat}{implied}" x="{node.x:.1f}" y="{node.y:.1f}" '
             f'width="{node.w:.1f}" height="{node.h:.1f}" rx="10"/>',
         ]
-        if node.id != INTERNET_ID and node.glyph:
+        # An icon tile in place of the old three-letter badge: at a glance the
+        # shape says "database" faster than the letters RDS do, and the
+        # service name is already spelled out on the line beside it.
+        icon = ICONS.get(cat)
+        if icon:
+            tile_x, tile_y = node.x + 13, node.y + 13
             parts.append(
-                f'    <rect class="badge-{cat}" x="{node.x + 12:.1f}" '
-                f'y="{node.y + 12:.1f}" width="34" height="17" rx="4"/>'
+                f'    <rect class="icon-tile badge-{cat}" x="{tile_x:.1f}" '
+                f'y="{tile_y:.1f}" width="30" height="30" rx="8"/>'
             )
             parts.append(
-                f'    <text class="badge" x="{node.x + 29:.1f}" y="{node.y + 24:.1f}" '
-                f'text-anchor="middle">{escape(node.glyph)}</text>'
+                f'    <g class="icon-mark" transform="translate({tile_x + 7:.1f} '
+                f'{tile_y + 7:.1f}) scale(1)"><path d="{icon}"/></g>'
             )
             text_x = node.x + 54
         else:
-            text_x = node.x + 14
+            text_x = node.x + 16
 
         parts.append(
             f'    <text class="label text-{cat}" x="{text_x:.1f}" '
-            f'y="{node.y + 26:.1f}">{escape(node.label)}</text>'
+            f'y="{node.y + 30:.1f}">{escape(node.label)}</text>'
         )
         parts.append(
-            f'    <text class="sublabel text-{cat}" x="{node.x + 14:.1f}" '
-            f'y="{node.y + 48:.1f}">{escape(node.sublabel)}</text>'
+            f'    <text class="sublabel text-{cat}" x="{text_x:.1f}" '
+            f'y="{node.y + 47:.1f}">{escape(node.sublabel)}</text>'
         )
+        if node.glyph and node.id != INTERNET_ID:
+            parts.append(
+                f'    <text class="tag text-{cat}" x="{node.x + 16:.1f}" '
+                f'y="{node.y + 68:.1f}">{escape(node.glyph)}</text>'
+            )
         parts.append("  </g>")
         return "\n".join(parts)

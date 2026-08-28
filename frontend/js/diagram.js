@@ -10,7 +10,7 @@
  * calculation can drift from what was actually drawn.
  */
 
-import { downloadText, el, icon, toast } from "./ui.js";
+import { clear, downloadText, el, icon, toast } from "./ui.js";
 
 const MIN_ZOOM = 0.15;
 const MAX_ZOOM = 4;
@@ -77,6 +77,7 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
     viewport.style.transform =
       `translate(${state.x}px, ${state.y}px) scale(${state.zoom})`;
     zoomLabel.textContent = `${Math.round(state.zoom * 100)}%`;
+    updateMinimap();
   }
 
   /**
@@ -221,6 +222,59 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
     if (group) selectNode(group);
   }
 
+  /* ---------------- mini map ---------------- */
+
+  // A second, scaled copy of the same SVG with a viewport rectangle over it.
+  // Cloning is cheaper and always truthful: it cannot drift from the diagram
+  // the way a separately-drawn schematic would, and it needs no extra data.
+  const MINIMAP_W = 168;
+  const minimap = el("div", { class: "minimap", "aria-hidden": "true" });
+  const minimapFrame = el("div", { class: "minimap__frame" });
+  let minimapScale = 1;
+
+  function buildMinimap() {
+    const { width, height } = contentSize();
+    minimapScale = MINIMAP_W / width;
+    const mapHeight = Math.round(height * minimapScale);
+
+    minimap.style.width = `${MINIMAP_W}px`;
+    minimap.style.height = `${mapHeight}px`;
+
+    const clone = svg.cloneNode(true);
+    clone.style.width = `${width}px`;
+    clone.style.height = `${height}px`;
+    clone.removeAttribute("tabindex");
+    for (const node of clone.querySelectorAll("[tabindex]")) node.removeAttribute("tabindex");
+
+    const inner = el("div", { class: "minimap__inner" }, [clone]);
+    inner.style.transform = `scale(${minimapScale})`;
+    clear(minimap).append(inner, minimapFrame);
+  }
+
+  /** Draw the rectangle showing which part of the drawing is on screen. */
+  function updateMinimap() {
+    const area = stage.getBoundingClientRect();
+    if (!area.width) return;
+    const ratio = minimapScale / state.zoom;
+    minimapFrame.style.width = `${Math.min(MINIMAP_W, area.width * ratio)}px`;
+    minimapFrame.style.height = `${area.height * ratio}px`;
+    minimapFrame.style.transform =
+      `translate(${-state.x * minimapScale / state.zoom}px, ` +
+      `${-state.y * minimapScale / state.zoom}px)`;
+  }
+
+  // Clicking the map jumps the view to that point.
+  minimap.addEventListener("pointerdown", (event) => {
+    const box = minimap.getBoundingClientRect();
+    const area = stage.getBoundingClientRect();
+    const targetX = (event.clientX - box.left) / minimapScale;
+    const targetY = (event.clientY - box.top) / minimapScale;
+    state.x = area.width / 2 - targetX * state.zoom;
+    state.y = area.height / 2 - targetY * state.zoom;
+    userAdjusted = true;
+    apply();
+  });
+
   /* ---------------- refit on size change ---------------- */
 
   // A tab panel that is hidden has no size, so the first fit has to wait for
@@ -364,6 +418,13 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
     el("button", { class: "menu__item", role: "menuitem", type: "button",
       onClick: () => { closeMenu(); exportPdf(); } },
       [icon("download", 14), el("span", { text: "PDF via print…" })]),
+    el("button", { class: "menu__item", role: "menuitem", type: "button",
+      onClick: () => {
+        closeMenu();
+        downloadText(result.diagram.mermaid, `${result.summary.name}.mmd`);
+        toast("Mermaid saved", { variant: "success" });
+      } },
+      [icon("code", 14), el("span", { text: "Mermaid source" })]),
   ]);
 
   const exportButton = el("button", {
@@ -421,6 +482,9 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
 
     el("span", { class: "toolbar__spacer" }),
 
+    control("Toggle mini map", "Mini map", () => {
+      minimap.classList.toggle("is-hidden");
+    }, [icon("panel", 14)]),
     control("Fullscreen", "Fullscreen", toggleFullscreen, [icon("layers", 14)]),
     el("div", { class: "menu-anchor" }, [exportButton, exportMenu]),
   ]);
@@ -434,7 +498,11 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
     if (showDiagram) requestAnimationFrame(() => fit({ animate: false }));
   }
 
+  stage.append(minimap);
   const wrapper = el("div", { class: "diagram" }, [toolbar, stage, mermaidView]);
+
+  // Built once the SVG exists; the frame is positioned by the first fit.
+  if (svg) buildMinimap();
 
   function toggleFullscreen() {
     if (document.fullscreenElement) {
