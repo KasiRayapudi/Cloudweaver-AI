@@ -482,6 +482,10 @@
   }
   .sidebar__brand, .sidebar__label, .sidebar__footer { display: none; }
   .sidebar__scroll { display: flex; gap: var(--space-1); padding: var(--space-2); }
+  /* WCAG 2.2 target size (2.5.8): collapsing to an icon left these 16px
+     wide. A bottom bar is thumb-operated, so they get a touch target. */
+  .sidebar__scroll .nav-item { min-width: 44px; min-height: 44px; justify-content: center; }
+  .sidebar__section { margin-top: 0 !important; display: contents; }
   .workspace { grid-row: 1; }
   .main__inner { padding: var(--space-4) var(--space-4) var(--space-10); }
   .search-trigger { width: auto; }

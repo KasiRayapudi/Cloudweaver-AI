@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/static/styles/base.css">
   <link rel="stylesheet" href="/static/styles/components.css">
   <link rel="stylesheet" href="/static/styles/layout.css">
+  <link rel="stylesheet" href="/static/styles/compose.css">
   <link rel="stylesheet" href="/static/styles/result.css">
 
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230f7d73'/><path d='M9 20a4.5 4.5 0 0 1 .6-9 6 6 0 0 1 11.3 1.6A3.7 3.7 0 0 1 22 20z' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/></svg>">
@@ -108,23 +109,35 @@
       <main class="main" id="main" tabindex="-1">
         <div class="main__inner">
 
-          <!-- Hero: shown until the first successful generation -->
-          <section class="hero" id="hero">
-            <span class="hero__eyebrow">
-              <span data-icon="bolt"></span> Deterministic generation — no invented resources
-            </span>
-            <h1 class="hero__title">
-              Describe your infrastructure. Get a diagram <em>and</em> the Terraform.
-            </h1>
-            <p class="hero__lede">
-              Both are generated from one shared model, so the architecture you review is
-              the architecture you deploy. Every resource explains why it exists.
-            </p>
-            <ul class="hero__points">
-              <li><span data-icon="check"></span> Only what you asked for, plus mandatory dependencies</li>
-              <li><span data-icon="check"></span> Validated against AWS deployment constraints</li>
-              <li><span data-icon="check"></span> Terraform that passes <code class="mono">validate</code></li>
-            </ul>
+          <!-- Workspace header: compressed from a 347px hero. Carries
+               capability figures rather than decoration, so the space earns
+               its place on every visit rather than only the first. -->
+          <section class="page-head" id="hero">
+            <div class="page-head__main">
+              <h1 class="page-head__title">Design cloud infrastructure in plain English</h1>
+              <p class="page-head__lede">
+                One shared model produces the diagram and the Terraform together, so the
+                architecture you review is the architecture you deploy.
+              </p>
+            </div>
+            <dl class="capability-strip" aria-label="Generator capabilities">
+              <div class="capability">
+                <dt>Services</dt><dd class="tabular">34</dd>
+                <span>AWS resource kinds</span>
+              </div>
+              <div class="capability">
+                <dt>Invented resources</dt><dd class="tabular">0</dd>
+                <span>explicit or mandatory only</span>
+              </div>
+              <div class="capability">
+                <dt>Generation</dt><dd class="tabular">&lt;10<em>ms</em></dd>
+                <span>deterministic, repeatable</span>
+              </div>
+              <div class="capability">
+                <dt>Validation</dt><dd class="tabular">18</dd>
+                <span>AWS deployment checks</span>
+              </div>
+            </dl>
           </section>
 
           <!-- Composer -->
@@ -153,13 +166,39 @@
             <div class="suggestions" id="suggestions" aria-label="Suggested prompts"></div>
           </section>
 
-          <!-- Template gallery -->
+          <!-- Template gallery: two tiers. Eight identical cards gave no
+               card the weight of a recommendation, so the two most common
+               shapes are featured and the rest become a dense list. -->
           <section id="templates" aria-labelledby="templates-heading">
             <div class="section-head">
-              <h2 id="templates-heading">Start from a template</h2>
-              <p>Proven shapes you can edit before generating</p>
+              <h2 id="templates-heading">Start from a shape</h2>
+              <p>Edit any of these before generating</p>
+              <span class="section-head__spacer"></span>
+              <button class="btn btn--ghost btn--sm" id="browse-all-templates">
+                <span data-icon="search"></span><span>Browse all</span>
+              </button>
             </div>
-            <div class="grid" id="template-grid"></div>
+            <div class="template-featured" id="template-featured"></div>
+            <ul class="template-rows" id="template-rows"></ul>
+          </section>
+
+          <!-- How it works -->
+          <section class="pipeline-strip" aria-labelledby="pipeline-heading">
+            <h2 class="sr-only" id="pipeline-heading">How generation works</h2>
+            <ol class="pipeline-steps">
+              <li><span class="pipeline-steps__n">1</span>
+                <strong>Intent extraction</strong>
+                <span>Your words are matched to services, counts, regions and refusals.</span></li>
+              <li><span class="pipeline-steps__n">2</span>
+                <strong>Policy engine</strong>
+                <span>Mandatory dependencies are added; nothing else ever is.</span></li>
+              <li><span class="pipeline-steps__n">3</span>
+                <strong>One shared model</strong>
+                <span>Diagram and Terraform are generated from the same graph.</span></li>
+              <li><span class="pipeline-steps__n">4</span>
+                <strong>Validation</strong>
+                <span>Checked against AWS constraints Terraform cannot see.</span></li>
+            </ol>
           </section>
 
           <!-- Results mount point -->
@@ -169,6 +208,20 @@
           </section>
 
         </div>
+
+        <footer class="site-footer">
+          <div class="site-footer__inner">
+            <span class="site-footer__brand">Cloudweaver</span>
+            <span class="site-footer__note">
+              Generated Terraform is a starting point. Read the plan before applying it —
+              nothing here has been applied to a real account.
+            </span>
+            <nav class="site-footer__links" aria-label="Resources">
+              <a href="/docs">API reference</a>
+              <a href="https://developer.hashicorp.com/terraform/docs" target="_blank" rel="noreferrer noopener">Terraform docs</a>
+            </nav>
+          </div>
+        </footer>
       </main>
     </div>
   </div>

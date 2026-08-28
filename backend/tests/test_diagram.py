@@ -169,3 +169,44 @@ def test_diagram_and_terraform_describe_the_same_resources(three_tier):
             continue
         assert resource.id in drawn, f"{resource.id} generated but not drawn"
     assert svg
+
+
+# --------------------------------------------------------------------------
+# node identity, for the interactive viewer
+# --------------------------------------------------------------------------
+
+def test_every_drawn_node_carries_its_resource_id():
+    """The viewer maps a click back to the shared model through this id.
+
+    Without it a click could only be matched on the visible label, which is
+    ambiguous the moment two resources share a display name.
+    """
+    spec = spec_for("a load balancer with web servers, a database and a cache")
+    layout = LayoutEngine().build(spec)
+    svg = SvgRenderer().render(layout)
+    for node in layout.nodes:
+        assert f'data-resource-id="{node.id}"' in svg, node.id
+
+
+def test_node_ids_in_the_svg_exist_in_the_model():
+    import re as _re
+    spec = spec_for(ALL_PROMPTS[0])
+    svg = SvgRenderer().render(LayoutEngine().build(spec))
+    ids = set(_re.findall(r'data-resource-id="([^"]+)"', svg))
+    known = {r.id for r in spec.resources} | {INTERNET_ID}
+    assert ids <= known, ids - known
+
+
+def test_nodes_are_reachable_by_keyboard():
+    svg = SvgRenderer().render(layout_for(ALL_PROMPTS[0]))
+    assert 'tabindex="0"' in svg
+    assert 'role="button"' in svg
+
+
+def test_node_identity_is_escaped():
+    """Ids reach the markup, so they must not be able to break out of it."""
+    from app.models.ir import InfrastructureSpec, Resource, Tier
+    spec = InfrastructureSpec(name="x")
+    spec.add(Resource(id='a"><script>', kind=Kind.VM, name="EC2", tier=Tier.APP, reason="p"))
+    svg = SvgRenderer().render(LayoutEngine().build(spec))
+    assert "<script>" not in svg

@@ -8,7 +8,7 @@
 
 import { ApiError, api } from "./api.js";
 import { createPalette } from "./palette.js";
-import { renderResult, renderSkeleton } from "./results.js";
+import { renderPipeline, renderResult } from "./results.js";
 import { applyTheme, store } from "./store.js";
 import {
   clear, copyText, downloadBlob, el, formatRelative, icon, toast,
@@ -25,7 +25,8 @@ const dom = {
   counter: $("counter"),
   hero: $("hero"),
   templates: $("templates"),
-  templateGrid: $("template-grid"),
+  templateFeatured: $("template-featured"),
+  templateRows: $("template-rows"),
   suggestions: $("suggestions"),
   results: $("results"),
   resultsBody: $("results-body"),
@@ -95,7 +96,7 @@ async function generate() {
   store.set({ status: "generating", prompt, error: null });
   setBusy(true);
   showResultsRegion();
-  renderSkeleton(dom.resultsBody);
+  const progress = renderPipeline(dom.resultsBody);
 
   try {
     const result = await api.generate(prompt, {
@@ -103,7 +104,13 @@ async function generate() {
       signal: inFlight.signal,
     });
 
-    store.set({ status: "ready", result, selectedResource: null });
+    progress.finish(result.summary.duration_ms);
+
+    // The architecture is what the user came to see, so generation lands on
+    // it rather than on a summary they have to click past.
+    store.set({
+      status: "ready", result, selectedResource: null, activeTab: "diagram",
+    });
     store.remember(prompt, result);
     paintResult(result);
 
@@ -115,7 +122,11 @@ async function generate() {
       variant: errors ? "warning" : "success",
     });
   } catch (error) {
-    if (error.name === "ApiError" && error.message.includes("cancelled")) return;
+    if (error.name === "ApiError" && error.message.includes("cancelled")) {
+      progress.stop();
+      return;
+    }
+    progress.fail(error.message);
     store.set({ status: "error", error });
     renderError(error);
   } finally {
@@ -131,6 +142,23 @@ function setBusy(busy) {
     busy ? el("span", { class: "btn__spinner" }) : icon("sparkles"),
     el("span", { text: busy ? "Generating…" : "Generate" }),
   );
+  // A cancel control only exists while there is something to cancel.
+  const existing = $("cancel-generation");
+  if (busy && !existing) {
+    dom.generate.after(
+      el("button", {
+        class: "btn btn--ghost btn--sm",
+        id: "cancel-generation",
+        type: "button",
+        onClick: () => {
+          inFlight?.abort();
+          toast("Generation cancelled", { variant: "info", duration: 2000 });
+        },
+      }, [el("span", { text: "Cancel" })]),
+    );
+  } else if (!busy) {
+    existing?.remove();
+  }
   if (!busy) updateCounter();
 }
 
@@ -243,28 +271,55 @@ function renderFavourites() {
 /* ------------------------------------------------------------------
    Gallery
    ------------------------------------------------------------------ */
+function loadTemplate(template) {
+  setPrompt(template.prompt);
+  toast("Template loaded", {
+    message: "Edit it, then press Generate.",
+    variant: "info",
+    duration: 2400,
+  });
+}
+
 function renderTemplates() {
-  clear(dom.templateGrid);
-  for (const template of TEMPLATES) {
-    dom.templateGrid.append(
+  // Two tiers: eight identical cards gave no card the weight of a
+  // recommendation, and cost 1.4 screens of scroll to say very little.
+  const [first, second, ...rest] = TEMPLATES;
+
+  clear(dom.templateFeatured);
+  for (const template of [first, second]) {
+    dom.templateFeatured.append(
       el("button", {
-        class: "card card--interactive template",
+        class: "card card--interactive template-hero",
         type: "button",
-        onClick: () => {
-          setPrompt(template.prompt);
-          toast("Template loaded", {
-            message: "Edit it, then press Generate.",
-            variant: "info",
-            duration: 2400,
-          });
-        },
+        onClick: () => loadTemplate(template),
       }, [
-        el("span", { class: "template__icon" }, [icon(template.icon)]),
-        el("span", { class: "template__title", text: template.title }),
-        el("span", { class: "template__desc", text: template.description }),
-        el("span", { class: "template__meta" },
+        el("span", { class: "template-hero__icon" }, [icon(template.icon, 18)]),
+        el("span", { class: "template-hero__title" }, [
+          el("span", { text: template.title }),
+          el("span", { class: "badge badge--brand", text: "Popular" }),
+        ]),
+        el("span", { class: "template-hero__desc", text: template.description }),
+        el("span", { class: "template-hero__meta" },
           template.tags.map((tag) => el("span", { class: "badge badge--neutral", text: tag })),
         ),
+      ]),
+    );
+  }
+
+  clear(dom.templateRows);
+  for (const template of rest) {
+    dom.templateRows.append(
+      el("li", {}, [
+        el("button", {
+          class: "template-row",
+          type: "button",
+          onClick: () => loadTemplate(template),
+        }, [
+          el("span", { class: "template-row__icon" }, [icon(template.icon, 15)]),
+          el("span", { class: "template-row__title", text: template.title }),
+          el("span", { class: "template-row__desc", text: template.description }),
+          el("span", { class: "template-row__go" }, [icon("enter", 14)]),
+        ]),
       ]),
     );
   }
@@ -353,6 +408,7 @@ function bind(palette) {
   $("theme-toggle").addEventListener("click", cycleTheme);
   $("sidebar-toggle").addEventListener("click", toggleSidebar);
   $("palette-trigger").addEventListener("click", palette.open);
+  $("browse-all-templates")?.addEventListener("click", palette.open);
 
   dom.useLlm.addEventListener("change", () => {
     store.set({ extractor: dom.useLlm.checked ? "llm" : "rule" }, { persistState: true });

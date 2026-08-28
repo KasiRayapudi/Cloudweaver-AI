@@ -183,8 +183,14 @@ class SvgRenderer:
         cat = node.category
         implied = " implied" if node.origin != "explicit" else ""
         title = escape(node.detail or node.label)
+        # data-resource-id lets an interactive viewer map a click back to the
+        # resource in the shared model. Additive only: it changes no geometry,
+        # no colour and no other output.
         parts = [
-            f'  <g><title>{title}</title>',
+            f'  <g class="node-group" data-resource-id="{escape(node.id)}" '
+            f'data-category="{escape(cat)}" tabindex="0" role="button" '
+            f'aria-label="{escape(node.label)}">'
+            f'<title>{title}</title>',
             f'    <rect class="node fill-{cat}{implied}" x="{node.x:.1f}" y="{node.y:.1f}" '
             f'width="{node.w:.1f}" height="{node.h:.1f}" rx="10"/>',
         ]

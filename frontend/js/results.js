@@ -6,6 +6,7 @@
  * infrastructure facts; if a number is shown, the backend computed it.
  */
 
+import { createDiagramViewer } from "./diagram.js";
 import { clear, copyText, downloadText, el, formatCurrency, icon, toast } from "./ui.js";
 import { store } from "./store.js";
 
@@ -26,32 +27,93 @@ const TABS = [
 /* ==================================================================
    Skeleton shown while generating
    ================================================================== */
-export function renderSkeleton(mount) {
-  clear(mount).append(
-    el("div", { class: "result" }, [
-      el("div", { class: "stat-row" },
-        Array.from({ length: 4 }, () =>
-          el("div", { class: "stat" }, [
-            el("div", { class: "skeleton skeleton--text", style: { width: "38%" } }),
-            el("div", { class: "skeleton skeleton--title", style: { width: "62%" } }),
-          ]),
-        ),
-      ),
-      el("div", { class: "panel", style: { marginTop: "var(--space-4)" } }, [
-        el("div", { class: "panel__body" }, [
-          el("div", { class: "skeleton skeleton--title" }),
-          el("div", { class: "skeleton skeleton--text", style: { width: "92%" } }),
-          el("div", { class: "skeleton skeleton--text", style: { width: "78%" } }),
-          el("div", { class: "skeleton skeleton--text", style: { width: "85%" } }),
-          el("div", { class: "skeleton skeleton--block", style: { marginTop: "var(--space-4)" } }),
-        ]),
+export const PIPELINE_STAGES = [
+  { id: "extract", label: "Extracting intent", detail: "Matching services, counts, regions and refusals" },
+  { id: "policy", label: "Applying policy", detail: "Only explicit resources and mandatory dependencies" },
+  { id: "closure", label: "Resolving dependencies", detail: "Closing over the requirement graph" },
+  { id: "terraform", label: "Generating Terraform", detail: "Typed HCL from the shared model" },
+  { id: "diagram", label: "Drawing architecture", detail: "Same model, second view" },
+  { id: "validate", label: "Validating", detail: "AWS constraints Terraform cannot see" },
+];
+
+/**
+ * Progress pipeline shown during generation.
+ *
+ * The backend is a single call that completes in tens of milliseconds, so
+ * these stages are NOT polled -- there is no per-stage endpoint to poll, and
+ * inventing one would mean adding artificial delay to make a progress bar look
+ * busy. Instead the stages advance on a short timer purely as an explanation
+ * of what the pipeline does, and every remaining stage is marked complete the
+ * instant the real response arrives. Nothing here ever claims a stage
+ * finished before the work actually did.
+ */
+export function renderPipeline(mount) {
+  clear(mount);
+
+  const rows = new Map();
+  const list = el("ol", { class: "pipeline-progress", "aria-label": "Generation progress" });
+
+  for (const stage of PIPELINE_STAGES) {
+    const marker = el("span", { class: "pipeline-progress__marker" });
+    const row = el("li", { class: "pipeline-progress__row", dataset: { state: "waiting" } }, [
+      marker,
+      el("span", { class: "pipeline-progress__body" }, [
+        el("span", { class: "pipeline-progress__label", text: stage.label }),
+        el("span", { class: "pipeline-progress__detail", text: stage.detail }),
       ]),
-      el("p", { class: "generating-note" }, [
-        el("span", { class: "btn__spinner" }),
-        el("span", { text: "Extracting intent, resolving dependencies, generating Terraform…" }),
+    ]);
+    rows.set(stage.id, { row, marker });
+    list.append(row);
+  }
+
+  const status = el("p", {
+    class: "pipeline-progress__status",
+    role: "status",
+    "aria-live": "polite",
+    text: "Starting…",
+  });
+
+  mount.append(
+    el("div", { class: "result" }, [
+      el("div", { class: "panel" }, [
+        el("div", { class: "panel__header" }, [
+          el("span", { class: "btn__spinner" }),
+          el("span", { class: "panel__title", text: "Generating infrastructure" }),
+        ]),
+        el("div", { class: "panel__body" }, [list, status]),
       ]),
     ]),
   );
+
+  let index = 0;
+  function advance() {
+    if (index >= PIPELINE_STAGES.length) return;
+    const stage = PIPELINE_STAGES[index];
+    const entry = rows.get(stage.id);
+    if (index > 0) rows.get(PIPELINE_STAGES[index - 1].id).row.dataset.state = "done";
+    entry.row.dataset.state = "active";
+    status.textContent = stage.label + "…";
+    index += 1;
+  }
+
+  advance();
+  const timer = setInterval(advance, 130);
+
+  return {
+    /** Mark everything complete; called when the response actually lands. */
+    finish(durationMs) {
+      clearInterval(timer);
+      for (const { row } of rows.values()) row.dataset.state = "done";
+      status.textContent = `Completed in ${Math.round(durationMs)} ms`;
+    },
+    fail(message) {
+      clearInterval(timer);
+      const current = PIPELINE_STAGES[Math.max(0, index - 1)];
+      rows.get(current.id).row.dataset.state = "failed";
+      status.textContent = message;
+    },
+    stop: () => clearInterval(timer),
+  };
 }
 
 /* ==================================================================
@@ -120,6 +182,13 @@ export function renderResult(mount, result, handlers = {}) {
       tabindex: "0",
     }, [renderers[state.tab](result, { ...handlers, select, state })]);
     panelHost.append(panel);
+
+    // Now that the panel is in the document and has a measurable box, fit the
+    // diagram. Switching to this tab from another one lands here too, so a
+    // diagram rendered while hidden is still fitted the moment it is shown.
+    if (state.tab === "diagram" && state.viewer) {
+      setTimeout(() => state.viewer.fit({ animate: false }), 0);
+    }
   }
 
   mount.append(
@@ -481,153 +550,31 @@ function categoryOf(kind) {
 /* ==================================================================
    Diagram
    ================================================================== */
-function renderDiagram(result) {
-  const stage = el("div", { class: "diagram-stage", tabindex: "0",
-    "aria-label": "Architecture diagram. Drag to pan, scroll to zoom." });
-  stage.innerHTML = result.diagram.svg;         // generated by our own renderer
+function renderDiagram(result, ctx) {
+  // A dedicated module owns pan, zoom, fit and export; this only wires the
+  // viewer to the inspector so a node click opens the same panel the resource
+  // list opens.
+  const drawer = el("aside", { class: "node-drawer", hidden: true, "aria-live": "polite" });
 
-  const mermaid = el("pre", { class: "code code--boxed", hidden: true }, [
-    el("code", { text: result.diagram.mermaid }),
-  ]);
-
-  let zoom = 1;
-  let panX = 0;
-  let panY = 0;
-  let dragging = false;
-  let originX = 0;
-  let originY = 0;
-
-  function apply() {
-    const svg = stage.querySelector("svg");
-    if (!svg) return;
-    svg.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
-    svg.style.transformOrigin = "top center";
-    label.textContent = `${Math.round(zoom * 100)}%`;
-  }
-
-  function setZoom(next) {
-    zoom = Math.min(3, Math.max(0.3, next));
-    apply();
-  }
-
-  stage.addEventListener("wheel", (event) => {
-    if (!event.ctrlKey && !event.metaKey) return;   // plain scroll still scrolls
-    event.preventDefault();
-    setZoom(zoom - event.deltaY * 0.002);
-  }, { passive: false });
-
-  stage.addEventListener("pointerdown", (event) => {
-    dragging = true;
-    originX = event.clientX - panX;
-    originY = event.clientY - panY;
-    stage.setPointerCapture(event.pointerId);
-    stage.style.cursor = "grabbing";
-  });
-  stage.addEventListener("pointermove", (event) => {
-    if (!dragging) return;
-    panX = event.clientX - originX;
-    panY = event.clientY - originY;
-    apply();
-  });
-  stage.addEventListener("pointerup", (event) => {
-    dragging = false;
-    stage.releasePointerCapture(event.pointerId);
-    stage.style.cursor = "grab";
+  const viewer = createDiagramViewer(result, {
+    onSelectResource: (resource) => {
+      drawer.hidden = false;
+      clear(drawer).append(
+        el("div", { class: "node-drawer__head" }, [
+          el("span", { class: "node-drawer__title", text: "Resource inspector" }),
+          el("button", {
+            class: "btn btn--ghost btn--icon btn--sm",
+            "aria-label": "Close inspector",
+            onClick: () => { drawer.hidden = true; },
+          }, [icon("x", 14)]),
+        ]),
+        renderInspector(resource, result),
+      );
+    },
   });
 
-  stage.addEventListener("keydown", (event) => {
-    const step = event.shiftKey ? 40 : 16;
-    const moves = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
-    if (moves[event.key]) {
-      event.preventDefault();
-      panX += moves[event.key][0];
-      panY += moves[event.key][1];
-      apply();
-    } else if (event.key === "+" || event.key === "=") { event.preventDefault(); setZoom(zoom + 0.15); }
-    else if (event.key === "-") { event.preventDefault(); setZoom(zoom - 0.15); }
-    else if (event.key === "0") { event.preventDefault(); reset(); }
-  });
-
-  function reset() { zoom = 1; panX = 0; panY = 0; apply(); }
-
-  const label = el("span", { class: "zoom-label tabular", text: "100%" });
-
-  const wrapper = el("div", { class: "diagram" }, [
-    el("div", { class: "toolbar" }, [
-      el("div", { class: "segmented", role: "group", "aria-label": "Diagram format" }, [
-        el("button", { class: "segmented__option", type: "button", "aria-pressed": "true",
-          onClick: (e) => setFormat(e, true) }, [el("span", { text: "Rendered" })]),
-        el("button", { class: "segmented__option", type: "button", "aria-pressed": "false",
-          onClick: (e) => setFormat(e, false) }, [el("span", { text: "Mermaid" })]),
-      ]),
-      el("span", { class: "toolbar__spacer" }),
-      label,
-      el("button", { class: "btn btn--ghost btn--icon btn--sm", "data-tooltip": "Zoom out",
-        "aria-label": "Zoom out", onClick: () => setZoom(zoom - 0.15) }, [el("span", { text: "−" })]),
-      el("button", { class: "btn btn--ghost btn--icon btn--sm", "data-tooltip": "Zoom in",
-        "aria-label": "Zoom in", onClick: () => setZoom(zoom + 0.15) }, [el("span", { text: "+" })]),
-      el("button", { class: "btn btn--ghost btn--sm", "data-tooltip": "Reset view",
-        onClick: reset }, [el("span", { text: "Reset" })]),
-      el("button", { class: "btn btn--ghost btn--sm", "data-tooltip": "Fullscreen",
-        "aria-label": "Fullscreen", onClick: () => {
-          if (document.fullscreenElement) document.exitFullscreen();
-          else wrapper.requestFullscreen?.().catch(() => toast("Fullscreen unavailable", { variant: "warning" }));
-        } }, [icon("panel", 14)]),
-      el("button", { class: "btn btn--secondary btn--sm", onClick: () => {
-        downloadText(result.diagram.svg, `${result.summary.name}-architecture.svg`, "image/svg+xml");
-        toast("Diagram saved", { variant: "success" });
-      } }, [icon("download", 14), el("span", { text: "SVG" })]),
-      el("button", { class: "btn btn--secondary btn--sm", onClick: () => exportPng(result) },
-        [icon("download", 14), el("span", { text: "PNG" })]),
-    ]),
-    stage,
-    mermaid,
-  ]);
-
-  function setFormat(event, rendered) {
-    for (const option of event.currentTarget.parentElement.children) {
-      option.setAttribute("aria-pressed", String(option === event.currentTarget));
-    }
-    stage.hidden = !rendered;
-    mermaid.hidden = rendered;
-  }
-
-  queueMicrotask(apply);
-  return wrapper;
-}
-
-/** Rasterise the SVG in a canvas. Self-contained, so no network is involved. */
-function exportPng(result) {
-  const svg = result.diagram.svg;
-  const sizes = svg.match(/width="([\d.]+)"\s+height="([\d.]+)"/);
-  const width = Math.ceil(Number(sizes?.[1] || 1200));
-  const height = Math.ceil(Number(sizes?.[2] || 800));
-  const scale = 2;
-
-  const image = new Image();
-  const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-
-  image.onload = () => {
-    const canvas = el("canvas", { width: width * scale, height: height * scale });
-    const context = canvas.getContext("2d");
-    context.scale(scale, scale);
-    context.drawImage(image, 0, 0);
-    canvas.toBlob((png) => {
-      if (!png) { toast("PNG export failed", { variant: "error" }); return; }
-      const link = el("a", { href: URL.createObjectURL(png), download: `${result.summary.name}-architecture.png` });
-      document.body.append(link);
-      link.click();
-      link.remove();
-      toast("PNG saved", { variant: "success" });
-    }, "image/png");
-    URL.revokeObjectURL(url);
-  };
-  image.onerror = () => {
-    URL.revokeObjectURL(url);
-    toast("PNG export failed", { message: "Save the SVG instead.", variant: "error" });
-  };
-  image.src = url;
+  ctx.state.viewer = viewer;
+  return el("div", { class: "diagram-layout" }, [viewer.element, drawer]);
 }
 
 /* ==================================================================

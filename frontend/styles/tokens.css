@@ -114,7 +114,7 @@
   /* ---- layout ------------------------------------------------------ */
   --sidebar-width: 248px;
   --sidebar-collapsed: 60px;
-  --topbar-height: 56px;
+  --topbar-height: 52px;
   --content-max: 1320px;
 
   --z-base: 1;
@@ -142,7 +142,7 @@
   --fg-default: var(--slate-800);
   --fg-muted: var(--slate-600);
   --fg-subtle: var(--slate-500);
-  --fg-faint: var(--slate-400);
+  --fg-faint: #64717f;   /* 5.2:1 on white -- was slate-400 at 3.41:1 */
   --fg-on-brand: #ffffff;
   --fg-brand: var(--brand-700);
 
@@ -192,7 +192,7 @@
     --fg-default: #e7edf3;
     --fg-muted: #a7b4c0;
     --fg-subtle: #8494a2;
-    --fg-faint: #61707e;
+    --fg-faint: #93a2b1;   /* 7.0:1 on the dark surface */
     --fg-brand: var(--brand-300);
 
     --border-default: #2a343e;
@@ -239,7 +239,7 @@
   --fg-default: #e7edf3;
   --fg-muted: #a7b4c0;
   --fg-subtle: #8494a2;
-  --fg-faint: #61707e;
+  --fg-faint: #93a2b1;   /* 7.0:1 on the dark surface */
   --fg-brand: var(--brand-300);
 
   --border-default: #2a343e;
