@@ -1,0 +1,242 @@
+{
+  "generator": "ai-infra-iac-generator",
+  "prompt": "Create a development environment in us-east-1 with one Ubuntu EC2 instance inside a VPC. Add an Internet Gateway, Security Group allowing SSH and HTTP, IAM role, and Elastic IP.",
+  "summary": "dev environment in us-east-1: Internet Gateway, EC2 Instance, VPC, Security Group, Elastic IP, IAM Role.",
+  "spec": {
+    "name": "development-environment-in-dev",
+    "provider": "aws",
+    "region": "us-east-1",
+    "environment": "dev",
+    "prompt": "Create a development environment in us-east-1 with one Ubuntu EC2 instance inside a VPC. Add an Internet Gateway, Security Group allowing SSH and HTTP, IAM role, and Elastic IP.",
+    "summary": "dev environment in us-east-1: Internet Gateway, EC2 Instance, VPC, Security Group, Elastic IP, IAM Role.",
+    "high_availability": false,
+    "private_placement_requested": false,
+    "availability_zones": 2,
+    "resources": [
+      {
+        "id": "internet_gateway",
+        "kind": "internet_gateway",
+        "name": "Internet Gateway",
+        "tier": "network",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {},
+        "confidence": 0.9,
+        "evidence": "...instance inside a vpc. add an internet gateway security group allowing ssh a...",
+        "reason": "The requirement names 'internet gateway'."
+      },
+      {
+        "id": "app_server",
+        "kind": "vm",
+        "name": "EC2 Instance",
+        "tier": "app",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "os": "ubuntu",
+          "ami_name_filter": "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*",
+          "ami_owner": "099720109477",
+          "ssh_user": "ubuntu",
+          "instance_type": "t3.micro",
+          "subnet_band": "public"
+        },
+        "confidence": 0.9,
+        "evidence": "...in us-east-1 with one ubuntu ec2 instance inside a vpc. add an internet...",
+        "reason": "The requirement names 'ec2 instance'."
+      },
+      {
+        "id": "main",
+        "kind": "vpc",
+        "name": "VPC",
+        "tier": "network",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "cidr_block": "10.0.0.0/16",
+          "enable_dns_hostnames": true
+        },
+        "confidence": 0.85,
+        "evidence": "...ubuntu ec2 instance inside a vpc. add an internet gateway secu...",
+        "reason": "The requirement names 'vpc'."
+      },
+      {
+        "id": "app_sg",
+        "kind": "security_group",
+        "name": "App Security Group",
+        "tier": "security",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "ingress_ports": [
+            22,
+            80
+          ],
+          "ports_from_prompt": true,
+          "purpose": "application",
+          "ingress_from": "0.0.0.0/0"
+        },
+        "confidence": 0.9,
+        "evidence": "...vpc. add an internet gateway security group allowing ssh and http iam rol...",
+        "reason": "The requirement names 'security group'."
+      },
+      {
+        "id": "eip",
+        "kind": "elastic_ip",
+        "name": "Elastic IP",
+        "tier": "public",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "attached_to": "app_server"
+        },
+        "confidence": 0.9,
+        "evidence": "...ing ssh and http iam role and elastic ip.",
+        "reason": "The requirement names 'elastic ip'."
+      },
+      {
+        "id": "instance_role",
+        "kind": "iam_role",
+        "name": "EC2 Instance Role",
+        "tier": "security",
+        "origin": "explicit",
+        "count": 1,
+        "properties": {
+          "service": "ec2.amazonaws.com"
+        },
+        "confidence": 0.9,
+        "evidence": "...y group allowing ssh and http iam role and elastic ip.",
+        "reason": "The requirement names 'iam role'."
+      },
+      {
+        "id": "public",
+        "kind": "subnet_public",
+        "name": "Public Subnet",
+        "tier": "network",
+        "origin": "implied",
+        "count": 2,
+        "properties": {
+          "map_public_ip": true,
+          "offset": 0
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "EC2 Instance needs a subnet to launch into; public was used because no private subnet was requested."
+      },
+      {
+        "id": "public_rt",
+        "kind": "route_table",
+        "name": "Route Table",
+        "tier": "network",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "scope": "public"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "The public subnet needs a route table with a default route."
+      }
+    ],
+    "edges": [
+      {
+        "source": "main",
+        "target": "internet_gateway",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "app_server",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "public",
+        "target": "app_server",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "app_sg",
+        "target": "app_server",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "instance_role",
+        "target": "app_server",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "app_sg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "public",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "internet_gateway",
+        "target": "public",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "public_rt",
+        "target": "public",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "public_rt",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "public",
+        "kind": "contains",
+        "label": null
+      },
+      {
+        "source": "main",
+        "target": "internet_gateway",
+        "kind": "contains",
+        "label": "attached to"
+      },
+      {
+        "source": "main",
+        "target": "public_rt",
+        "kind": "contains",
+        "label": null
+      },
+      {
+        "source": "eip",
+        "target": "app_server",
+        "kind": "depends",
+        "label": "public IP"
+      }
+    ],
+    "assumptions": [
+      "Public Subnet: EC2 Instance needs a subnet to launch into; public was used because no private subnet was requested.",
+      "Route Table: The public subnet needs a route table with a default route."
+    ],
+    "warnings": [],
+    "extractor": "rule"
+  },
+  "findings": [
+    {
+      "severity": "error",
+      "code": "open_admin_port",
+      "message": "App Security Group exposes administrative access (port 22) to the whole internet.",
+      "resource_id": "app_sg"
+    }
+  ],
+  "estimated_monthly_cost_usd": 8.0
+}

@@ -43,6 +43,23 @@ class GenerationResult:
             "diagram": {"svg": self.diagram_svg, "mermaid": self.diagram_mermaid},
             "terraform": self.terraform,
             "findings": [f.to_dict() for f in self.findings],
+            "dependency_graph": {
+                "edges": self.spec.dependency_graph(),
+                "creation_order": self.spec.creation_order(),
+                "cycles": self.spec.find_cycles(),
+            },
+            "extraction": [
+                {
+                    "resource": r.name,
+                    "id": r.id,
+                    "kind": r.kind.value,
+                    "origin": r.origin.value,
+                    "confidence": r.confidence,
+                    "reason": r.reason,
+                    "source": r.evidence,
+                }
+                for r in self.spec.resources
+            ],
             "summary": {
                 "name": self.spec.name,
                 "provider": self.spec.provider.value,

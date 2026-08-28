@@ -257,14 +257,23 @@ class TerraformGenerator:
         )
         if spec.has(Kind.VPC):
             f.data("aws_availability_zones", "available").set("state", "available")
-        if spec.of_kind(Kind.VM, Kind.AUTOSCALING_GROUP, Kind.BASTION):
-            ami = f.data("aws_ami", "amazon_linux",
-                         "Latest Amazon Linux 2023 AMI in the target region.")
+        instances = spec.of_kind(Kind.VM, Kind.AUTOSCALING_GROUP, Kind.BASTION)
+        if instances:
+            # The AMI follows the operating system the user named. Defaulting
+            # to Amazon Linux when they asked for Ubuntu would silently give
+            # them a different machine than the one they described.
+            props = instances[0].properties
+            os_name = str(props.get("os", "amazon linux"))
+            ami = f.data("aws_ami", "os",
+                         f"Latest {os_name} AMI in the target region.")
             ami.set("most_recent", True)
-            ami.set("owners", ["amazon"])
+            ami.set("owners", [str(props.get("ami_owner", "amazon"))])
             filt = ami.block("filter")
             filt.set("name", "name")
-            filt.set("values", ["al2023-ami-*-x86_64"])
+            filt.set("values", [str(props.get("ami_name_filter", "al2023-ami-*-x86_64"))])
+            virt = ami.block("filter")
+            virt.set("name", "virtualization-type")
+            virt.set("values", ["hvm"])
         return f.render()
 
     def _tfvars(self, spec: InfrastructureSpec) -> str:
@@ -352,34 +361,60 @@ class TerraformGenerator:
                 assoc.set("route_table_id", ref("aws_route_table", "public", "id"))
 
         nat = spec.first(Kind.NAT_GATEWAY)
-        if nat is not None and private is not None and public is not None:
-            eip = f.resource("aws_eip", "nat", "Elastic IP for each NAT gateway.")
-            eip.set("count", Raw(str(nat.count)))
-            eip.set("domain", "vpc")
-            eip.set("tags", _tags(("Name", "${local.name_prefix}-nat-eip-${count.index + 1}")))
+        eip = spec.first(Kind.ELASTIC_IP)
+        nat_eip = eip if (eip is not None and eip.properties.get("attached_to") ==
+                          (nat.id if nat else None)) else None
+
+        if nat is not None and public is not None:
+            if nat_eip is not None:
+                e = f.resource("aws_eip", _name(nat_eip),
+                               "Elastic IP for each NAT gateway.")
+                e.set("count", Raw(str(nat.count)))
+                e.set("domain", "vpc")
+                e.set("tags", _tags(
+                    ("Name", "${local.name_prefix}-nat-eip-${count.index + 1}")
+                ))
 
             n = f.resource("aws_nat_gateway", _name(nat))
             n.set("count", Raw(str(nat.count)))
-            n.set("allocation_id", Raw("aws_eip.nat[count.index].id"))
+            if nat_eip is not None:
+                n.set("allocation_id", Raw(f"aws_eip.{_name(nat_eip)}[count.index].id"))
             n.set("subnet_id", Raw(f"aws_subnet.{_name(public)}[count.index].id"))
             n.set("tags", _tags(("Name", "${local.name_prefix}-nat-${count.index + 1}")))
             n.set("depends_on", [Raw(f"aws_internet_gateway.{_name(igw)}")] if igw else [])
 
+        # The private route table exists whenever private subnets do. A private
+        # database needs no NAT, but its subnets still need somewhere to route.
+        if private is not None:
             rt = f.resource("aws_route_table", "private")
             rt.set("count", var("az_count"))
             rt.set("vpc_id", vpc_id)
-            route = rt.block("route")
-            route.set("cidr_block", "0.0.0.0/0")
-            route.set(
-                "nat_gateway_id",
-                Raw(f"aws_nat_gateway.{_name(nat)}[count.index % {nat.count}].id"),
-            )
-            rt.set("tags", _tags(("Name", "${local.name_prefix}-private-rt-${count.index + 1}")))
+            if nat is not None:
+                route = rt.block("route")
+                route.set("cidr_block", "0.0.0.0/0")
+                route.set(
+                    "nat_gateway_id",
+                    Raw(f"aws_nat_gateway.{_name(nat)}[count.index % {nat.count}].id"),
+                )
+            rt.set("tags", _tags(
+                ("Name", "${local.name_prefix}-private-rt-${count.index + 1}")
+            ))
 
             assoc = f.resource("aws_route_table_association", "private")
             assoc.set("count", var("az_count"))
             assoc.set("subnet_id", Raw(f"aws_subnet.{_name(private)}[count.index].id"))
             assoc.set("route_table_id", Raw("aws_route_table.private[count.index].id"))
+
+        # A standalone Elastic IP: the user asked for a fixed public address on
+        # an instance, which is not the same thing as a NAT gateway's address.
+        if eip is not None and nat_eip is None:
+            target = spec.get(str(eip.properties.get("attached_to", "")))
+            e = f.resource("aws_eip", _name(eip),
+                           "Static public address for the instance.")
+            e.set("domain", "vpc")
+            if target is not None and target.kind is Kind.VM:
+                e.set("instance", ref("aws_instance", _name(target), "id"))
+            e.set("tags", _tags(("Name", "${local.name_prefix}-eip")))
 
         return f
 
@@ -446,7 +481,7 @@ class TerraformGenerator:
             b = f.resource("aws_instance", _name(vm))
             if vm.count > 1:
                 b.set("count", vm.count)
-            b.set("ami", ref("data", "aws_ami", "amazon_linux", "id"))
+            b.set("ami", ref("data", "aws_ami", "os", "id"))
             b.set("instance_type", vm.properties.get("instance_type", "t3.micro"))
             if app_subnet is not None:
                 index = "count.index" if vm.count > 1 else "0"
@@ -467,7 +502,7 @@ class TerraformGenerator:
 
         for bastion in spec.of_kind(Kind.BASTION):
             b = f.resource("aws_instance", _name(bastion))
-            b.set("ami", ref("data", "aws_ami", "amazon_linux", "id"))
+            b.set("ami", ref("data", "aws_ami", "os", "id"))
             b.set("instance_type", bastion.properties.get("instance_type", "t3.micro"))
             if public is not None:
                 b.set("subnet_id", Raw(f"aws_subnet.{_name(public)}[0].id"))
@@ -481,7 +516,7 @@ class TerraformGenerator:
         if asg is not None:
             lt = f.resource("aws_launch_template", "app")
             lt.set("name_prefix", Raw('"${local.name_prefix}-lt-"'))
-            lt.set("image_id", ref("data", "aws_ami", "amazon_linux", "id"))
+            lt.set("image_id", ref("data", "aws_ami", "os", "id"))
             lt.set("instance_type", asg.properties.get("instance_type", "t3.micro"))
             lt.set("key_name", var("key_pair_name"))
             lt.set("user_data", Raw('filebase64("${path.module}/user_data.sh")'))

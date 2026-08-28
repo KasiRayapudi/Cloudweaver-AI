@@ -132,7 +132,7 @@
     <text class="label text-traffic" x="402.0" y="242.0">Route 53 Zone</text>
     <text class="sublabel text-traffic" x="362.0" y="264.0">dns zone</text>
   </g>
-  <g><title>versioning=False; encrypted=True; public_read=False; cdn_fronted=True</title>
+  <g><title>versioning=False; encrypted=True; public_read=False</title>
     <rect class="node fill-storage" x="348.0" y="362.0" width="178.0" height="68.0" rx="10"/>
     <rect class="badge-storage" x="360.0" y="374.0" width="34" height="17" rx="4"/>
     <text class="badge" x="377.0" y="386.0" text-anchor="middle">S3</text>

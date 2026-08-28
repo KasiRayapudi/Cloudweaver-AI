@@ -26,3 +26,7 @@ terraform apply
 ```
 
 Review `terraform.tfvars` first. Nothing here has been applied to a real account -- always read the plan before approving it.
+
+## Assumptions made during generation
+
+- IAM Role: Lambda requires an execution role.

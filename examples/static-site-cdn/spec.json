@@ -10,6 +10,7 @@
     "prompt": "Host a static website in an S3 bucket served through CloudFront with a Route 53 custom domain and a WAF in front of it.",
     "summary": "dev environment in us-east-1: CloudFront, WAF Web ACL, Route 53 Zone, S3 Bucket.",
     "high_availability": false,
+    "private_placement_requested": false,
     "availability_zones": 2,
     "resources": [
       {
@@ -23,8 +24,9 @@
           "origin": "assets",
           "origin_type": "s3"
         },
-        "confidence": 0.65,
-        "evidence": "...n an s3 bucket served through cloudfront with a route 53 custom domain..."
+        "confidence": 0.85,
+        "evidence": "...n an s3 bucket served through cloudfront with a route 53 custom domain...",
+        "reason": "The requirement names 'cloudfront'."
       },
       {
         "id": "waf",
@@ -36,8 +38,9 @@
         "properties": {
           "scope": "CLOUDFRONT"
         },
-        "confidence": 0.65,
-        "evidence": "...route 53 custom domain and a waf in front of it."
+        "confidence": 0.85,
+        "evidence": "...route 53 custom domain and a waf in front of it.",
+        "reason": "The requirement names 'waf'."
       },
       {
         "id": "dns_zone",
@@ -49,8 +52,9 @@
         "properties": {
           "alias_target": "cdn"
         },
-        "confidence": 0.7,
-        "evidence": "...gh cloudfront with a route 53 custom domain and a waf in front of it."
+        "confidence": 0.9,
+        "evidence": "...gh cloudfront with a route 53 custom domain and a waf in front of it.",
+        "reason": "The requirement names 'custom domain'."
       },
       {
         "id": "assets",
@@ -62,11 +66,11 @@
         "properties": {
           "versioning": false,
           "encrypted": true,
-          "public_read": false,
-          "cdn_fronted": true
+          "public_read": false
         },
-        "confidence": 0.7,
-        "evidence": "host a static website in an s3 bucket served throug..."
+        "confidence": 0.9,
+        "evidence": "host a static website in an s3 bucket served throug...",
+        "reason": "The requirement names 'static website'."
       }
     ],
     "edges": [

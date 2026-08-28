@@ -247,8 +247,14 @@ function renderSpec(spec) {
       text("span", null, label),
       text("span", `tag ${resource.origin}`, resource.origin)
     );
-    item.title = `${resource.name} (${resource.kind})` +
-      (resource.evidence ? `\nfrom: "${resource.evidence}"` : "");
+    // Why this resource exists, on hover: the phrase the user used, or the
+    // dependency that made it mandatory.
+    item.title = [
+      `${resource.name} (${resource.kind})`,
+      resource.reason ? `why: ${resource.reason}` : "",
+      resource.evidence ? `from: "${resource.evidence}"` : "",
+      `confidence: ${(resource.confidence ?? 1).toFixed(2)}`,
+    ].filter(Boolean).join("\n");
     el.resourceList.appendChild(item);
   });
   el.specJson.textContent = JSON.stringify(spec, null, 2);

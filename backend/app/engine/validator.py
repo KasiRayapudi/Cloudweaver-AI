@@ -17,9 +17,16 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Literal
 
+from app.engine.policy import PRIVATE_EGRESS_CONSUMERS
 from app.models.ir import EdgeKind, InfrastructureSpec, Kind
 
 Severity = Literal["error", "warning", "info"]
+
+#: Compute that AWS will not let you grant permissions to without a role.
+NEEDS_ROLE: frozenset[Kind] = frozenset({
+    Kind.VM, Kind.AUTOSCALING_GROUP, Kind.FUNCTION, Kind.CONTAINER_SERVICE,
+    Kind.KUBERNETES_CLUSTER,
+})
 
 # Very rough on-demand monthly USD estimates, used only for relative guidance.
 MONTHLY_COST_HINTS: dict[Kind, float] = {
@@ -56,10 +63,73 @@ class SpecValidator:
     def validate(self, spec: InfrastructureSpec) -> list[Finding]:
         findings: list[Finding] = []
         findings += self._structural(spec)
+        findings += self._network(spec)
         findings += self._security(spec)
         findings += self._reliability(spec)
         findings += self._cost(spec)
         return findings
+
+    # -- network correctness ----------------------------------------------
+
+    def _network(self, spec: InfrastructureSpec) -> list[Finding]:
+        """Checks that a deployment would actually fail, or silently misbehave."""
+        out: list[Finding] = []
+
+        # A public subnet without an internet gateway is not public.
+        if spec.has(Kind.SUBNET_PUBLIC) and not spec.has(Kind.INTERNET_GATEWAY):
+            out.append(Finding(
+                "error", "missing_internet_gateway",
+                "A public subnet exists but there is no internet gateway, so "
+                "nothing in it can reach the internet.",
+            ))
+
+        # Private compute with no NAT cannot install packages or call APIs.
+        private_compute = [
+            r for r in spec.resources
+            if r.kind in PRIVATE_EGRESS_CONSUMERS
+            and r.properties.get("subnet_band") == "private"
+        ]
+        if private_compute and not spec.has(Kind.NAT_GATEWAY):
+            names = ", ".join(r.name for r in private_compute)
+            out.append(Finding(
+                "warning", "private_subnet_without_nat",
+                f"{names} sits in a private subnet with no NAT gateway, so it "
+                "has no outbound internet access.",
+                private_compute[0].id,
+            ))
+
+        # A route table nothing routes through is dead configuration.
+        for rt in spec.of_kind(Kind.ROUTE_TABLE):
+            scope = rt.properties.get("scope")
+            subnet_kind = Kind.SUBNET_PUBLIC if scope == "public" else Kind.SUBNET_PRIVATE
+            if not spec.has(subnet_kind):
+                out.append(Finding(
+                    "warning", "unattached_route_table",
+                    f"{rt.name} has no {scope} subnet to associate with.", rt.id,
+                ))
+
+        # Two networks claiming the same address range will not route.
+        seen_cidrs: dict[str, str] = {}
+        for r in spec.resources:
+            cidr = r.properties.get("cidr_block")
+            if not cidr:
+                continue
+            if cidr in seen_cidrs:
+                out.append(Finding(
+                    "error", "duplicate_cidr",
+                    f"{r.name} and {seen_cidrs[cidr]} both use {cidr}.", r.id,
+                ))
+            seen_cidrs[str(cidr)] = r.name
+
+        # Terraform will not converge on a dependency cycle.
+        for cycle in spec.find_cycles():
+            out.append(Finding(
+                "error", "circular_dependency",
+                "Circular dependency: " + " -> ".join(cycle) + ".",
+                cycle[0],
+            ))
+
+        return out
 
     # -- structural --------------------------------------------------------
 
@@ -116,6 +186,36 @@ class SpecValidator:
                         f"{sg.name} allows traffic from any address; put the workload "
                         "behind a load balancer or restrict the CIDR.", sg.id,
                     ))
+
+        # A security group attached to nothing is a leftover. Matched on edge
+        # structure rather than on the "protects" label, because a group that
+        # is also a declared dependency carries the dependency label instead.
+        attached = {
+            e.source for e in spec.edges if e.kind is EdgeKind.DEPENDENCY
+        }
+        for sg in spec.of_kind(Kind.SECURITY_GROUP):
+            if sg.id not in attached:
+                out.append(Finding(
+                    "info", "unused_security_group",
+                    f"{sg.name} is not attached to any resource.", sg.id,
+                ))
+
+        # Compute without an identity cannot be given permissions later.
+        role_ids = {r.id for r in spec.of_kind(Kind.IAM_ROLE)}
+        for compute in spec.resources:
+            if compute.kind not in NEEDS_ROLE:
+                continue
+            has_role = any(
+                e.target == compute.id
+                and e.source in role_ids
+                and e.kind is EdgeKind.DEPENDENCY
+                for e in spec.edges
+            )
+            if not has_role:
+                out.append(Finding(
+                    "warning", "missing_iam_role",
+                    f"{compute.name} has no IAM role attached.", compute.id,
+                ))
 
         db = spec.first(Kind.SQL_DATABASE)
         if db is not None:

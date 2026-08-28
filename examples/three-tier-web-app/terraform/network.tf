@@ -49,7 +49,7 @@ resource "aws_route_table_association" "public" {
 }
 
 # Elastic IP for each NAT gateway.
-resource "aws_eip" "nat" {
+resource "aws_eip" "eip" {
   count  = 3
   domain = "vpc"
   tags   = merge(local.tags, { Name = "${local.name_prefix}-nat-eip-${count.index + 1}" })
@@ -57,7 +57,7 @@ resource "aws_eip" "nat" {
 
 resource "aws_nat_gateway" "nat" {
   count         = 3
-  allocation_id = aws_eip.nat[count.index].id
+  allocation_id = aws_eip.eip[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
   tags          = merge(local.tags, { Name = "${local.name_prefix}-nat-${count.index + 1}" })
   depends_on    = [aws_internet_gateway.igw]

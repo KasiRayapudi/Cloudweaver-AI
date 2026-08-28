@@ -124,7 +124,6 @@ def test_three_tier_emits_expected_resources(three_tier):
         'resource "aws_vpc"',
         'resource "aws_subnet" "public"',
         'resource "aws_subnet" "private"',
-        'resource "aws_nat_gateway"',
         'resource "aws_lb"',
         'resource "aws_lb_target_group"',
         'resource "aws_lb_listener"',

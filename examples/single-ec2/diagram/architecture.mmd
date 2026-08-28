@@ -1,26 +1,20 @@
 flowchart TD
-  subgraph edge["Edge & Global"]
+  subgraph public["Public Subnets"]
     direction LR
-    api_gateway["API Gateway"]
+    eip["Elastic IP"]
   end
   subgraph app["Private Subnets"]
     direction LR
-    lambda_fn["Lambda Function"]
-    work_queue["SQS Queue"]
-  end
-  subgraph data["Data Layer"]
-    direction LR
-    app_table["DynamoDB Table"]
+    app_server["EC2 Instance"]
   end
   subgraph sec["Security & Ops"]
     direction LR
-    lambda_role["IAM Role"]
+    app_sg["Security Group"]
+    instance_role["IAM Role"]
   end
-  lambda_role -.- lambda_fn
-  api_gateway -->|invokes| lambda_fn
-  work_queue -->|triggers| lambda_fn
-  lambda_fn -.-> app_table
-  lambda_fn -.-> work_queue
+  app_sg -.- app_server
+  instance_role -.- app_server
+  eip -.- app_server
   classDef compute fill:#fdf0e6,stroke:#e08b3c,color:#8a4c11;
   classDef traffic fill:#e8f1fd,stroke:#4a86d8,color:#1c4b8f;
   classDef data fill:#eaf5ee,stroke:#3f9c5f,color:#1d5c33;
@@ -29,8 +23,7 @@ flowchart TD
   classDef integration fill:#fdf2f7,stroke:#c8558f,color:#7c2c53;
   classDef network fill:#eef2f7,stroke:#7d8fa5,color:#3f4f63;
   classDef ops fill:#f5f2e8,stroke:#a58a3c,color:#5d4c17;
-  class api_gateway traffic;
-  class lambda_fn compute;
-  class work_queue integration;
-  class app_table data;
-  class lambda_role security;
+  class eip network;
+  class app_server compute;
+  class app_sg security;
+  class instance_role security;

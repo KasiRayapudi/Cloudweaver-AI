@@ -49,12 +49,33 @@ class SummaryModel(BaseModel):
     duration_ms: float
 
 
+class ExtractionModel(BaseModel):
+    """Why one resource is in the design -- the confidence record."""
+
+    resource: str
+    id: str
+    kind: str
+    origin: Literal["explicit", "implied"]
+    confidence: float
+    reason: str
+    source: str | None = None
+
+
+class DependencyGraphModel(BaseModel):
+    #: resource id -> ids it must be created after
+    edges: dict[str, list[str]]
+    creation_order: list[str]
+    cycles: list[list[str]]
+
+
 class GenerateResponse(BaseModel):
     summary: SummaryModel
     spec: dict[str, Any]
     diagram: DiagramModel
     terraform: dict[str, str]
     findings: list[FindingModel]
+    dependency_graph: DependencyGraphModel
+    extraction: list[ExtractionModel]
 
 
 class ExampleModel(BaseModel):

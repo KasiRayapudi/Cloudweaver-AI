@@ -2,7 +2,7 @@
 
 resource "aws_launch_template" "app" {
   name_prefix            = "${local.name_prefix}-lt-"
-  image_id               = data.aws_ami.amazon_linux.id
+  image_id               = data.aws_ami.os.id
   instance_type          = "t3.medium"
   key_name               = var.key_pair_name
   user_data              = filebase64("${path.module}/user_data.sh")

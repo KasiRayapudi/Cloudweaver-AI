@@ -41,6 +41,57 @@ Neither generator ever reads the user's text. They read the same completed
 resource graph, which is why the boxes on the diagram and the resources in the
 HCL are the same set of things, always.
 
+## The rule the generator is built around
+
+> A resource may exist only if the user asked for it, or if something the user
+> asked for cannot be deployed without it.
+
+There is no third category. "Best practice", "production ready" and
+"recommended" are not reasons to create infrastructure nobody asked for — they
+are reasons to raise a **finding**, which the validator does.
+
+Ask for one EC2 instance and you get eight resources, not thirty:
+
+```
+VPC · Public Subnet · Route Table · Internet Gateway
+EC2 · Elastic IP · Security Group · IAM Role
+```
+
+No load balancer. No auto scaling group. No NAT gateway, RDS, Secrets Manager
+or target group. Every resource carries the reason it exists:
+
+```json
+{ "resource": "EC2 Instance",  "origin": "explicit", "confidence": 0.90,
+  "reason": "The requirement names 'ec2 instance'.", "source": "one ubuntu ec2 instance" }
+{ "resource": "Public Subnet", "origin": "implied",  "confidence": 1.00,
+  "reason": "EC2 Instance needs a subnet to launch into; public was used because no private subnet was requested." }
+```
+
+The rules live in [`engine/policy.py`](backend/app/engine/policy.py) as two
+tables — `REQUIREMENTS` (mandatory dependencies) and `NON_DEPENDENCIES`
+(services a human might add, recorded so the decision *not* to generate them is
+explicit and testable). The mapper is a fixed-point loop over those tables with
+no per-service knowledge of its own, which is what makes "never invent a
+resource" a property of the engine rather than a promise about its control flow.
+
+Two inferences are permitted, both narrowly: a load balancer and a scaling
+group may appear for the phrases *high availability*, *auto scaling*, *web
+tier*, or when more than one instance is requested. Each records the phrase
+that triggered it.
+
+### Placement rules
+
+| Situation | Result |
+|---|---|
+| EC2, nothing said about placement | Public subnet + IGW + route table |
+| "in a private subnet" | Private subnet + private route table + **NAT gateway** |
+| Database, nothing said | Private subnets, **no NAT** — RDS needs no egress |
+| Private subnet exists only for a database | Web server stays **public** |
+
+That last row matters: a database creating private subnets for itself must not
+drag public-facing compute in with it, which would in turn make a NAT gateway
+look mandatory.
+
 ## Quick start
 
 ```bash
@@ -118,11 +169,18 @@ pip install anthropic
 Every generated design is validated before you see it — the "automated checks
 against security policy" listed as future work in the paper:
 
-- **error** — SSH/RDP open to `0.0.0.0/0`, a database in a public subnet
-- **warning** — production without Multi-AZ, publicly readable buckets,
-  application ports open to the internet, unencrypted storage
-- **info** — orphaned resources, oversized instances outside production,
-  per-AZ NAT gateway cost
+- **error** — SSH/RDP open to `0.0.0.0/0`; a database in a public subnet; a
+  public subnet with no internet gateway; duplicate CIDR blocks; circular
+  dependencies
+- **warning** — private compute with no NAT gateway (no outbound access);
+  compute with no IAM role; a route table with no subnet; production without
+  Multi-AZ; publicly readable buckets; unencrypted storage
+- **info** — unused security groups, orphaned resources, oversized instances
+  outside production, per-AZ NAT gateway cost
+
+Because the engine no longer adds infrastructure to satisfy best practice, the
+findings are where that advice now lives — visible next to the code, and yours
+to accept or ignore.
 
 `python backend/cli.py "..." --strict` exits non-zero on any error-severity
 finding, which makes it usable as a CI gate.

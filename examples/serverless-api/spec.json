@@ -10,6 +10,7 @@
     "prompt": "A serverless REST API: API Gateway in front of a Python Lambda function that reads and writes a DynamoDB table, with an SQS queue for background jobs. Development environment in ap-south-1.",
     "summary": "dev environment in ap-south-1: Lambda Function, API Gateway, DynamoDB Table, SQS Queue.",
     "high_availability": false,
+    "private_placement_requested": false,
     "availability_zones": 2,
     "resources": [
       {
@@ -24,8 +25,9 @@
           "memory_size": 512,
           "timeout": 30
         },
-        "confidence": 0.7,
-        "evidence": "...gateway in front of a python lambda function that reads and writes a dynam..."
+        "confidence": 0.9,
+        "evidence": "...gateway in front of a python lambda function that reads and writes a dynam...",
+        "reason": "The requirement names 'lambda function'."
       },
       {
         "id": "api_gateway",
@@ -37,8 +39,9 @@
         "properties": {
           "integration": "lambda"
         },
-        "confidence": 0.7,
-        "evidence": "a serverless rest api api gateway in front of a python lambda f..."
+        "confidence": 0.9,
+        "evidence": "a serverless rest api api gateway in front of a python lambda f...",
+        "reason": "The requirement names 'api gateway'."
       },
       {
         "id": "app_table",
@@ -52,8 +55,9 @@
           "hash_key": "id",
           "point_in_time_recovery": false
         },
-        "confidence": 0.7,
-        "evidence": "...ction that reads and writes a dynamodb table with an sqs queue for backgro..."
+        "confidence": 0.9,
+        "evidence": "...ction that reads and writes a dynamodb table with an sqs queue for backgro...",
+        "reason": "The requirement names 'dynamodb table'."
       },
       {
         "id": "work_queue",
@@ -63,8 +67,9 @@
         "origin": "explicit",
         "count": 1,
         "properties": {},
-        "confidence": 0.7,
-        "evidence": "...ites a dynamodb table with an sqs queue for background jobs. developm..."
+        "confidence": 0.9,
+        "evidence": "...ites a dynamodb table with an sqs queue for background jobs. developm...",
+        "reason": "The requirement names 'sqs queue'."
       },
       {
         "id": "lambda_role",
@@ -77,15 +82,28 @@
           "service": "lambda.amazonaws.com"
         },
         "confidence": 1.0,
-        "evidence": null
+        "evidence": null,
+        "reason": "Lambda requires an execution role."
       }
     ],
     "edges": [
+      {
+        "source": "lambda_role",
+        "target": "lambda_fn",
+        "kind": "depends",
+        "label": "required by"
+      },
       {
         "source": "api_gateway",
         "target": "lambda_fn",
         "kind": "traffic",
         "label": "invokes"
+      },
+      {
+        "source": "work_queue",
+        "target": "lambda_fn",
+        "kind": "traffic",
+        "label": "triggers"
       },
       {
         "source": "lambda_fn",
@@ -98,21 +116,11 @@
         "target": "work_queue",
         "kind": "data",
         "label": "enqueues"
-      },
-      {
-        "source": "work_queue",
-        "target": "lambda_fn",
-        "kind": "traffic",
-        "label": "triggers"
-      },
-      {
-        "source": "lambda_role",
-        "target": "lambda_fn",
-        "kind": "depends",
-        "label": "assumed by"
       }
     ],
-    "assumptions": [],
+    "assumptions": [
+      "IAM Role: Lambda requires an execution role."
+    ],
     "warnings": [],
     "extractor": "rule"
   },

@@ -14,14 +14,14 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# Latest amazon linux AMI in the target region.
+# Latest ubuntu AMI in the target region.
 data "aws_ami" "os" {
   most_recent = true
-  owners      = ["amazon"]
+  owners      = ["099720109477"]
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
   }
 
   filter {

@@ -52,6 +52,9 @@ AWS_CATALOG: dict[Kind, ServiceInfo] = {
         Kind.SECURITY_GROUP, "Security Group", "aws_security_group",
         Tier.SECURITY, "security", "SG",
     ),
+    Kind.ELASTIC_IP: ServiceInfo(
+        Kind.ELASTIC_IP, "Elastic IP", "aws_eip", Tier.PUBLIC, "network", "EIP"
+    ),
     Kind.VM: ServiceInfo(Kind.VM, "EC2 Instance", "aws_instance", Tier.APP, "compute", "EC2"),
     Kind.AUTOSCALING_GROUP: ServiceInfo(
         Kind.AUTOSCALING_GROUP, "Auto Scaling Group", "aws_autoscaling_group",
@@ -269,6 +272,69 @@ LEXICON: tuple[LexEntry, ...] = (
     LexEntry(Kind.SECURITY_GROUP,
              ("security group", "firewall rule", "firewall"),
              "app_sg"),
+    LexEntry(Kind.ELASTIC_IP,
+             ("elastic ip", "eip", "static public ip", "static ip"),
+             "eip"),
+    LexEntry(Kind.IAM_ROLE,
+             ("iam role", "instance profile", "execution role", "service role", "iam"),
+             "instance_role"),
+)
+
+# Operating system -> (AMI name filter, owner, ssh user). Ordered most
+# specific first so "ubuntu 22.04" beats "ubuntu".
+OPERATING_SYSTEMS: tuple[tuple[str, str, str, str], ...] = (
+    ("ubuntu 24.04", "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*",
+     "099720109477", "ubuntu"),
+    ("ubuntu 22.04", "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*",
+     "099720109477", "ubuntu"),
+    ("ubuntu 20.04", "ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*",
+     "099720109477", "ubuntu"),
+    ("ubuntu", "ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*",
+     "099720109477", "ubuntu"),
+    ("debian", "debian-12-amd64-*", "136693071363", "admin"),
+    ("red hat", "RHEL-9*_HVM-*-x86_64-*", "309956199498", "ec2-user"),
+    ("rhel", "RHEL-9*_HVM-*-x86_64-*", "309956199498", "ec2-user"),
+    ("windows", "Windows_Server-2022-English-Full-Base-*", "801119661308", "Administrator"),
+    ("amazon linux", "al2023-ami-*-x86_64", "amazon", "ec2-user"),
+)
+
+DEFAULT_OS: tuple[str, str, str, str] = (
+    "amazon linux", "al2023-ami-*-x86_64", "amazon", "ec2-user"
+)
+
+# Protocol words -> port. Used when a prompt names protocols rather than
+# numbers ("a security group allowing SSH and HTTP").
+PROTOCOL_PORTS: tuple[tuple[str, int], ...] = (
+    ("ssh", 22),
+    ("http", 80),
+    ("https", 443),
+    ("rdp", 3389),
+    ("mysql", 3306),
+    ("postgres", 5432),
+    ("postgresql", 5432),
+    ("redis", 6379),
+    ("nfs", 2049),
+    ("smtp", 25),
+    ("dns", 53),
+)
+
+# Phrases that, per the resource rules, justify a load balancer or scaling
+# group even when the service itself is not named.
+LOAD_BALANCER_TRIGGERS: tuple[str, ...] = (
+    "high availability", "highly available", "high-availability",
+    "auto scaling", "autoscaling", "auto-scaling", "web tier",
+)
+
+AUTOSCALING_TRIGGERS: tuple[str, ...] = (
+    "auto scaling", "autoscaling", "auto-scaling", "scale automatically",
+    "scales automatically", "scale out", "elastic scaling",
+    "high availability", "highly available", "high-availability",
+)
+
+# Phrases that mean the workload should sit in private subnets.
+PRIVATE_PLACEMENT_MARKERS: tuple[str, ...] = (
+    "private subnet", "private subnets", "in private", "privately",
+    "not publicly accessible", "no public ip", "internal only",
 )
 
 # Every word that appears inside a service phrase. Used to tell a quantity

@@ -105,7 +105,10 @@ def test_lambda_runtime_from_language(extractor):
 
 def test_asg_absorbs_its_member_instances(extractor):
     spec = extractor.extract("an auto scaling group of EC2 instances")
-    assert kinds(spec) == {Kind.AUTOSCALING_GROUP}
+    # "auto scaling" also justifies a load balancer to spread traffic across
+    # the group, which is the one inference the resource rules allow.
+    assert Kind.AUTOSCALING_GROUP in kinds(spec)
+    assert Kind.VM not in kinds(spec)
     assert any("auto scaling group" in note for note in spec.assumptions)
 
 

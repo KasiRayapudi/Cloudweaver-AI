@@ -50,6 +50,7 @@ class Kind(str, Enum):
     NAT_GATEWAY = "nat_gateway"
     ROUTE_TABLE = "route_table"
     SECURITY_GROUP = "security_group"
+    ELASTIC_IP = "elastic_ip"
     # --- compute --------------------------------------------------------
     VM = "vm"
     AUTOSCALING_GROUP = "autoscaling_group"
@@ -84,11 +85,16 @@ class Kind(str, Enum):
 
 
 class Origin(str, Enum):
-    """Where a resource came from -- used by the UI and the assumption log."""
+    """Why a resource is in the design.
 
-    EXPLICIT = "explicit"  # the user named it
-    IMPLIED = "implied"    # required by something the user named
-    DEFAULT = "default"    # added by a baseline policy (e.g. always add a VPC)
+    These two values are exhaustive by policy: a resource is either something
+    the user asked for, or something without which the requested resources
+    cannot be deployed.  There is deliberately no "best practice" or
+    "recommended" origin -- see :mod:`app.engine.policy`.
+    """
+
+    EXPLICIT = "explicit"  # the user named it, or named a trigger phrase for it
+    REQUIRED = "implied"   # a mandatory dependency of an explicit resource
 
 
 class EdgeKind(str, Enum):
@@ -123,6 +129,13 @@ class Resource(BaseModel):
     evidence: str | None = Field(
         None, description="Span of user text that produced this resource"
     )
+    reason: str = Field(
+        "",
+        description=(
+            "Why this resource exists: the phrase the user used, or the "
+            "dependency that made it mandatory. Never empty in a generated spec."
+        ),
+    )
 
     @field_validator("id")
     @classmethod
@@ -153,6 +166,15 @@ class InfrastructureSpec(BaseModel):
     prompt: str = ""
     summary: str = ""
     high_availability: bool = False
+    private_placement_requested: bool = Field(
+        False,
+        description=(
+            "True only when the user asked for private networking. A database "
+            "forcing private subnets on itself does not set this: it must not "
+            "drag public-facing compute into private subnets, which would in "
+            "turn make a NAT gateway look mandatory."
+        ),
+    )
     availability_zones: int = Field(2, ge=1, le=6)
     resources: list[Resource] = Field(default_factory=list)
     edges: list[Edge] = Field(default_factory=list)
@@ -214,3 +236,66 @@ class InfrastructureSpec(BaseModel):
     @property
     def resource_count(self) -> int:
         return sum(r.count for r in self.resources)
+
+    # -- dependency graph -------------------------------------------------
+
+    def dependency_graph(self) -> dict[str, list[str]]:
+        """Map each resource id to the ids it must be created after.
+
+        Derived from ``DEPENDENCY`` and ``CONTAINMENT`` edges only: traffic and
+        data edges describe runtime flow, not creation order.
+        """
+        graph: dict[str, list[str]] = {r.id: [] for r in self.resources}
+        for edge in self.edges:
+            if edge.kind not in (EdgeKind.DEPENDENCY, EdgeKind.CONTAINMENT):
+                continue
+            # A depends-on edge points from the provider to the consumer, so
+            # the target is what waits for the source.
+            graph.setdefault(edge.target, []).append(edge.source)
+        return {k: sorted(set(v)) for k, v in graph.items()}
+
+    def creation_order(self) -> list[str]:
+        """Topologically sorted resource ids. Cycles are appended at the end."""
+        graph = self.dependency_graph()
+        ordered: list[str] = []
+        visiting: set[str] = set()
+        done: set[str] = set()
+
+        def visit(node: str) -> None:
+            if node in done or node in visiting:
+                return
+            visiting.add(node)
+            for parent in graph.get(node, []):
+                visit(parent)
+            visiting.discard(node)
+            done.add(node)
+            ordered.append(node)
+
+        for resource in self.resources:
+            visit(resource.id)
+        return ordered
+
+    def find_cycles(self) -> list[list[str]]:
+        """Return any dependency cycles, as lists of resource ids."""
+        graph = self.dependency_graph()
+        cycles: list[list[str]] = []
+        state: dict[str, int] = {}  # 0 = unvisited, 1 = on stack, 2 = done
+        stack: list[str] = []
+
+        def walk(node: str) -> None:
+            state[node] = 1
+            stack.append(node)
+            for parent in graph.get(node, []):
+                if state.get(parent, 0) == 0:
+                    walk(parent)
+                elif state.get(parent) == 1:
+                    cycle = stack[stack.index(parent):]
+                    if cycle and sorted(cycle) not in [sorted(c) for c in cycles]:
+                        cycles.append(list(cycle))
+            stack.pop()
+            state[node] = 2
+
+        for resource in self.resources:
+            if state.get(resource.id, 0) == 0:
+                walk(resource.id)
+        return cycles

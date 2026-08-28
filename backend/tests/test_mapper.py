@@ -18,11 +18,14 @@ def has_edge(spec, source: str, target: str) -> bool:
 
 
 def test_vpc_is_implied_for_vpc_scoped_workloads():
+    """Only the network a public instance actually needs, and nothing more."""
     spec = mapped("two web servers")
     assert spec.has(Kind.VPC)
     assert spec.has(Kind.SUBNET_PUBLIC)
-    assert spec.has(Kind.SUBNET_PRIVATE)
     assert spec.has(Kind.INTERNET_GATEWAY)
+    # Private networking was never requested, so it must not appear.
+    assert not spec.has(Kind.SUBNET_PRIVATE)
+    assert not spec.has(Kind.NAT_GATEWAY)
 
 
 def test_serverless_design_gets_no_vpc():
@@ -32,13 +35,24 @@ def test_serverless_design_gets_no_vpc():
     assert not spec.has(Kind.NAT_GATEWAY)
 
 
-def test_nat_gateway_added_for_private_workloads():
-    spec = mapped("two web servers with a database")
-    assert spec.has(Kind.NAT_GATEWAY)
+def test_nat_gateway_added_only_for_private_compute():
+    """A NAT gateway follows private compute, not merely a private subnet.
+
+    A managed database needs private subnets but no egress, so a database
+    alone must never produce a NAT gateway.
+    """
+    with_private_compute = mapped("a web server in a private subnet")
+    assert with_private_compute.has(Kind.NAT_GATEWAY)
+
+    database_only = mapped("two web servers with a database")
+    assert database_only.has(Kind.SUBNET_PRIVATE)
+    assert not database_only.has(Kind.NAT_GATEWAY)
 
 
 def test_nat_gateway_per_az_when_highly_available():
-    spec = mapped("a highly available auto scaling group with a database")
+    spec = mapped(
+        "a highly available auto scaling group in private subnets with a database"
+    )
     assert spec.first(Kind.NAT_GATEWAY).count == spec.availability_zones
 
 
@@ -98,14 +112,17 @@ def test_iam_role_matches_the_compute_type():
     assert mapped("an ecs fargate service").get("task_role") is not None
 
 
-def test_database_credentials_go_to_a_secret_store():
+def test_secret_store_is_not_invented_for_a_database():
+    """Terraform generates the password; a secret store was never requested."""
     spec = mapped("a web server with a postgres database")
-    assert spec.has(Kind.SECRET_STORE)
+    assert not spec.has(Kind.SECRET_STORE)
+    assert mapped("a postgres database with secrets manager").has(Kind.SECRET_STORE)
 
 
-def test_monitoring_only_in_production():
-    assert mapped("a production web server with a database").has(Kind.MONITORING)
-    assert not mapped("a dev web server with a database").has(Kind.MONITORING)
+def test_monitoring_is_never_invented():
+    """"Production" is not a request for CloudWatch alarms."""
+    assert not mapped("a production web server with a database").has(Kind.MONITORING)
+    assert mapped("a web server with cloudwatch monitoring").has(Kind.MONITORING)
 
 
 def test_mapping_is_idempotent():

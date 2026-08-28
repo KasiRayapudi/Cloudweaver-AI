@@ -49,9 +49,9 @@ resource "aws_security_group" "app_sg" {
   }
 
   ingress {
-    description     = "Allow 8080 from alb_sg"
-    from_port       = 8080
-    to_port         = 8080
+    description     = "Allow 443 from alb_sg"
+    from_port       = 443
+    to_port         = 443
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }

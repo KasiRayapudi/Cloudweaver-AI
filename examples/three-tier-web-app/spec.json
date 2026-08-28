@@ -1,15 +1,16 @@
 {
   "generator": "ai-infra-iac-generator",
-  "prompt": "I need a production three-tier web app in eu-west-1: an auto scaling group of EC2 instances behind an application load balancer, a Multi-AZ PostgreSQL database, a Redis cache and an S3 bucket for uploads. Highly available.",
-  "summary": "prod environment in eu-west-1 with multi-AZ high availability: Application Load Balancer, Auto Scaling Group, RDS Instance, ElastiCache Redis, S3 Bucket.",
+  "prompt": "I need a production three-tier web app in eu-west-1: an auto scaling group of EC2 instances in private subnets behind an application load balancer, a Multi-AZ PostgreSQL database, a Redis cache and an S3 bucket for uploads. Highly available.",
+  "summary": "prod environment in eu-west-1 with multi-AZ high availability: Application Load Balancer, Auto Scaling Group, RDS Instance, ElastiCache Redis, S3 Bucket, Private Subnet.",
   "spec": {
     "name": "production-three-tier-prod",
     "provider": "aws",
     "region": "eu-west-1",
     "environment": "prod",
-    "prompt": "I need a production three-tier web app in eu-west-1: an auto scaling group of EC2 instances behind an application load balancer, a Multi-AZ PostgreSQL database, a Redis cache and an S3 bucket for uploads. Highly available.",
-    "summary": "prod environment in eu-west-1 with multi-AZ high availability: Application Load Balancer, Auto Scaling Group, RDS Instance, ElastiCache Redis, S3 Bucket.",
+    "prompt": "I need a production three-tier web app in eu-west-1: an auto scaling group of EC2 instances in private subnets behind an application load balancer, a Multi-AZ PostgreSQL database, a Redis cache and an S3 bucket for uploads. Highly available.",
+    "summary": "prod environment in eu-west-1 with multi-AZ high availability: Application Load Balancer, Auto Scaling Group, RDS Instance, ElastiCache Redis, S3 Bucket, Private Subnet.",
     "high_availability": true,
+    "private_placement_requested": true,
     "availability_zones": 3,
     "resources": [
       {
@@ -25,8 +26,9 @@
           "scheme": "internet-facing",
           "subnet_band": "public"
         },
-        "confidence": 0.75,
-        "evidence": "...up of ec2 instances behind an application load balancer a multi-az postgresql databas..."
+        "confidence": 0.95,
+        "evidence": "...in private subnets behind an application load balancer a multi-az postgresql databas...",
+        "reason": "The requirement names 'application load balancer'."
       },
       {
         "id": "app_asg",
@@ -36,14 +38,19 @@
         "origin": "explicit",
         "count": 1,
         "properties": {
+          "os": "amazon linux",
+          "ami_name_filter": "al2023-ami-*-x86_64",
+          "ami_owner": "amazon",
+          "ssh_user": "ec2-user",
           "instance_type": "t3.medium",
           "min_size": 2,
           "max_size": 6,
           "desired_capacity": 2,
           "subnet_band": "private"
         },
-        "confidence": 0.75,
-        "evidence": "...-tier web app in eu-west-1 an auto scaling group of ec2 instances behind an ap..."
+        "confidence": 0.95,
+        "evidence": "...-tier web app in eu-west-1 an auto scaling group of ec2 instances in private s...",
+        "reason": "The requirement names 'auto scaling group'."
       },
       {
         "id": "app_db",
@@ -60,11 +67,12 @@
           "multi_az": true,
           "backup_retention_period": 7,
           "storage_encrypted": true,
-          "port": 5432,
-          "subnet_band": "private"
+          "subnet_band": "private",
+          "port": 5432
         },
-        "confidence": 0.7,
-        "evidence": "...tion load balancer a multi-az postgresql database a redis cache and an s3 bucke..."
+        "confidence": 0.9,
+        "evidence": "...tion load balancer a multi-az postgresql database a redis cache and an s3 bucke...",
+        "reason": "The requirement names 'postgresql database'."
       },
       {
         "id": "app_cache",
@@ -78,8 +86,9 @@
           "num_nodes": 2,
           "subnet_band": "private"
         },
-        "confidence": 0.65,
-        "evidence": "...ulti-az postgresql database a redis cache and an s3 bucket for up..."
+        "confidence": 0.85,
+        "evidence": "...ulti-az postgresql database a redis cache and an s3 bucket for up...",
+        "reason": "The requirement names 'redis'."
       },
       {
         "id": "assets",
@@ -93,8 +102,24 @@
           "encrypted": true,
           "public_read": false
         },
-        "confidence": 0.7,
-        "evidence": "...database a redis cache and an s3 bucket for uploads. highly available..."
+        "confidence": 0.9,
+        "evidence": "...database a redis cache and an s3 bucket for uploads. highly available...",
+        "reason": "The requirement names 's3 bucket'."
+      },
+      {
+        "id": "private",
+        "kind": "subnet_private",
+        "name": "Private Subnet",
+        "tier": "network",
+        "origin": "explicit",
+        "count": 3,
+        "properties": {
+          "map_public_ip": false,
+          "offset": 10
+        },
+        "confidence": 0.9,
+        "evidence": "...ing group of ec2 instances in private subnets behind an application load ba...",
+        "reason": "The requirement names 'private subnets'."
       },
       {
         "id": "main",
@@ -108,87 +133,23 @@
           "enable_dns_hostnames": true
         },
         "confidence": 1.0,
-        "evidence": null
+        "evidence": null,
+        "reason": "A load balancer must live in a VPC."
       },
       {
         "id": "public",
         "kind": "subnet_public",
-        "name": "Public Subnets",
+        "name": "Public Subnet",
         "tier": "network",
         "origin": "implied",
         "count": 3,
         "properties": {
-          "cidr_prefix": "10.0.{}.0/24",
-          "offset": 1,
-          "map_public_ip": true
+          "map_public_ip": true,
+          "offset": 0
         },
         "confidence": 1.0,
-        "evidence": null
-      },
-      {
-        "id": "private",
-        "kind": "subnet_private",
-        "name": "Private Subnets",
-        "tier": "network",
-        "origin": "implied",
-        "count": 3,
-        "properties": {
-          "cidr_prefix": "10.0.{}.0/24",
-          "offset": 11,
-          "map_public_ip": false
-        },
-        "confidence": 1.0,
-        "evidence": null
-      },
-      {
-        "id": "igw",
-        "kind": "internet_gateway",
-        "name": "Internet Gateway",
-        "tier": "network",
-        "origin": "implied",
-        "count": 1,
-        "properties": {},
-        "confidence": 1.0,
-        "evidence": null
-      },
-      {
-        "id": "public_rt",
-        "kind": "route_table",
-        "name": "Public Route Table",
-        "tier": "network",
-        "origin": "implied",
-        "count": 1,
-        "properties": {
-          "scope": "public"
-        },
-        "confidence": 1.0,
-        "evidence": null
-      },
-      {
-        "id": "nat",
-        "kind": "nat_gateway",
-        "name": "NAT Gateway",
-        "tier": "public",
-        "origin": "implied",
-        "count": 3,
-        "properties": {
-          "subnet_band": "public"
-        },
-        "confidence": 1.0,
-        "evidence": null
-      },
-      {
-        "id": "private_rt",
-        "kind": "route_table",
-        "name": "Private Route Table",
-        "tier": "network",
-        "origin": "implied",
-        "count": 1,
-        "properties": {
-          "scope": "private"
-        },
-        "confidence": 1.0,
-        "evidence": null
+        "evidence": null,
+        "reason": "An internet-facing load balancer needs public subnets."
       },
       {
         "id": "alb_sg",
@@ -198,67 +159,16 @@
         "origin": "implied",
         "count": 1,
         "properties": {
-          "ingress_from": "0.0.0.0/0",
+          "purpose": "load-balancer",
           "ingress_ports": [
             80,
             443
           ],
-          "purpose": "load-balancer"
+          "ingress_from": "0.0.0.0/0"
         },
         "confidence": 1.0,
-        "evidence": null
-      },
-      {
-        "id": "app_sg",
-        "kind": "security_group",
-        "name": "App Security Group",
-        "tier": "security",
-        "origin": "implied",
-        "count": 1,
-        "properties": {
-          "ingress_from": "alb_sg",
-          "ingress_ports": [
-            80,
-            8080
-          ],
-          "purpose": "application"
-        },
-        "confidence": 1.0,
-        "evidence": null
-      },
-      {
-        "id": "db_sg",
-        "kind": "security_group",
-        "name": "Database Security Group",
-        "tier": "security",
-        "origin": "implied",
-        "count": 1,
-        "properties": {
-          "ingress_from": "app_sg",
-          "ingress_ports": [
-            5432
-          ],
-          "purpose": "database"
-        },
-        "confidence": 1.0,
-        "evidence": null
-      },
-      {
-        "id": "cache_sg",
-        "kind": "security_group",
-        "name": "Cache Security Group",
-        "tier": "security",
-        "origin": "implied",
-        "count": 1,
-        "properties": {
-          "ingress_from": "app_sg",
-          "ingress_ports": [
-            6379
-          ],
-          "purpose": "cache"
-        },
-        "confidence": 1.0,
-        "evidence": null
+        "evidence": null,
+        "reason": "The load balancer requires a security group."
       },
       {
         "id": "app_tg",
@@ -269,11 +179,30 @@
         "count": 1,
         "properties": {
           "port": 80,
-          "protocol": "HTTP",
           "health_check_path": "/health"
         },
         "confidence": 1.0,
-        "evidence": null
+        "evidence": null,
+        "reason": "A load balancer listener must forward to a target group."
+      },
+      {
+        "id": "app_sg",
+        "kind": "security_group",
+        "name": "App Security Group",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "purpose": "application",
+          "ingress_ports": [
+            80,
+            443
+          ],
+          "ingress_from": "alb_sg"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "Auto Scaling Group requires a security group."
       },
       {
         "id": "instance_role",
@@ -286,34 +215,307 @@
           "service": "ec2.amazonaws.com"
         },
         "confidence": 1.0,
-        "evidence": null
+        "evidence": null,
+        "reason": "Scaled instances need an instance profile role."
       },
       {
-        "id": "db_secret",
-        "kind": "secret_store",
-        "name": "DB Credentials",
+        "id": "db_sg",
+        "kind": "security_group",
+        "name": "Database Security Group",
         "tier": "security",
         "origin": "implied",
         "count": 1,
         "properties": {
-          "description": "Master credentials for the managed database"
+          "purpose": "database",
+          "ingress_ports": [
+            5432
+          ],
+          "ingress_from": "app_sg"
         },
         "confidence": 1.0,
-        "evidence": null
+        "evidence": null,
+        "reason": "The database requires a security group."
       },
       {
-        "id": "monitoring",
-        "kind": "monitoring",
-        "name": "CloudWatch Alarms",
-        "tier": "ops",
+        "id": "cache_sg",
+        "kind": "security_group",
+        "name": "Cache Security Group",
+        "tier": "security",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "purpose": "cache",
+          "ingress_ports": [
+            6379
+          ],
+          "ingress_from": "app_sg"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "The cache requires a security group."
+      },
+      {
+        "id": "private_rt",
+        "kind": "route_table",
+        "name": "Route Table",
+        "tier": "network",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "scope": "private"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "The private subnet needs its own route table."
+      },
+      {
+        "id": "nat",
+        "kind": "nat_gateway",
+        "name": "NAT Gateway",
+        "tier": "public",
+        "origin": "implied",
+        "count": 3,
+        "properties": {
+          "subnet_band": "public"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "Compute in the private subnet needs outbound internet access."
+      },
+      {
+        "id": "igw",
+        "kind": "internet_gateway",
+        "name": "Internet Gateway",
+        "tier": "network",
         "origin": "implied",
         "count": 1,
         "properties": {},
         "confidence": 1.0,
-        "evidence": null
+        "evidence": null,
+        "reason": "A public subnet is only public with an internet gateway."
+      },
+      {
+        "id": "public_rt",
+        "kind": "route_table",
+        "name": "Route Table",
+        "tier": "network",
+        "origin": "implied",
+        "count": 1,
+        "properties": {
+          "scope": "public"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "The public subnet needs a route table with a default route."
+      },
+      {
+        "id": "eip",
+        "kind": "elastic_ip",
+        "name": "Elastic IP",
+        "tier": "public",
+        "origin": "implied",
+        "count": 3,
+        "properties": {
+          "attached_to": "nat"
+        },
+        "confidence": 1.0,
+        "evidence": null,
+        "reason": "A NAT gateway requires an Elastic IP."
       }
     ],
     "edges": [
+      {
+        "source": "main",
+        "target": "alb",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "public",
+        "target": "alb",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "alb_sg",
+        "target": "alb",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "app_tg",
+        "target": "alb",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "app_asg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "private",
+        "target": "app_asg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "app_sg",
+        "target": "app_asg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "instance_role",
+        "target": "app_asg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "app_db",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "private",
+        "target": "app_db",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "db_sg",
+        "target": "app_db",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "app_cache",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "private",
+        "target": "app_cache",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "cache_sg",
+        "target": "app_cache",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "private",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "private_rt",
+        "target": "private",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "nat",
+        "target": "private",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "public",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "igw",
+        "target": "public",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "public_rt",
+        "target": "public",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "alb_sg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "app_tg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "app_sg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "db_sg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "cache_sg",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "private_rt",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "nat",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "public",
+        "target": "nat",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "igw",
+        "target": "nat",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "eip",
+        "target": "nat",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "igw",
+        "kind": "depends",
+        "label": "required by"
+      },
+      {
+        "source": "main",
+        "target": "public_rt",
+        "kind": "depends",
+        "label": "required by"
+      },
       {
         "source": "main",
         "target": "private",
@@ -327,8 +529,8 @@
         "label": null
       },
       {
-        "source": "igw",
-        "target": "main",
+        "source": "main",
+        "target": "igw",
         "kind": "contains",
         "label": "attached to"
       },
@@ -339,28 +541,16 @@
         "label": "egress"
       },
       {
-        "source": "alb_sg",
-        "target": "alb",
-        "kind": "depends",
-        "label": "protects"
+        "source": "main",
+        "target": "private_rt",
+        "kind": "contains",
+        "label": null
       },
       {
-        "source": "app_sg",
-        "target": "app_asg",
-        "kind": "depends",
-        "label": "protects"
-      },
-      {
-        "source": "db_sg",
-        "target": "app_db",
-        "kind": "depends",
-        "label": "protects"
-      },
-      {
-        "source": "cache_sg",
-        "target": "app_cache",
-        "kind": "depends",
-        "label": "protects"
+        "source": "main",
+        "target": "public_rt",
+        "kind": "contains",
+        "label": null
       },
       {
         "source": "alb",
@@ -391,51 +581,35 @@
         "target": "assets",
         "kind": "data",
         "label": "objects"
-      },
-      {
-        "source": "instance_role",
-        "target": "app_asg",
-        "kind": "depends",
-        "label": "assumed by"
-      },
-      {
-        "source": "db_secret",
-        "target": "app_db",
-        "kind": "depends",
-        "label": "credentials"
-      },
-      {
-        "source": "app_asg",
-        "target": "db_secret",
-        "kind": "data",
-        "label": "reads"
-      },
-      {
-        "source": "monitoring",
-        "target": "app_asg",
-        "kind": "depends",
-        "label": "watches"
-      },
-      {
-        "source": "monitoring",
-        "target": "app_db",
-        "kind": "depends",
-        "label": "watches"
       }
     ],
     "assumptions": [
       "The EC2 instances described are the auto scaling group's members, so they are generated as a launch template rather than standalone hosts.",
-      "Added a VPC (10.0.0.0/16) to host the workload.",
-      "Subnets are spread across 3 availability zones.",
-      "Added a NAT gateway so private workloads have outbound internet access.",
-      "One NAT gateway per AZ (3 total) for high availability.",
-      "Database credentials are stored in Secrets Manager, not in the code.",
-      "Production environment: CloudWatch alarms added for compute and database."
+      "VPC: A load balancer must live in a VPC.",
+      "Public Subnet: An internet-facing load balancer needs public subnets.",
+      "Security Group: The load balancer requires a security group.",
+      "Target Group: A load balancer listener must forward to a target group.",
+      "Security Group: Auto Scaling Group requires a security group.",
+      "IAM Role: Scaled instances need an instance profile role.",
+      "Security Group: The database requires a security group.",
+      "Security Group: The cache requires a security group.",
+      "Route Table: The private subnet needs its own route table.",
+      "NAT Gateway: Compute in the private subnet needs outbound internet access.",
+      "Internet Gateway: A public subnet is only public with an internet gateway.",
+      "Route Table: The public subnet needs a route table with a default route.",
+      "Elastic IP: A NAT gateway requires an Elastic IP.",
+      "One NAT gateway per availability zone (3 total) because high availability was requested."
     ],
     "warnings": [],
     "extractor": "rule"
   },
   "findings": [
+    {
+      "severity": "warning",
+      "code": "no_secret_store",
+      "message": "Production database without a managed secret store.",
+      "resource_id": null
+    },
     {
       "severity": "info",
       "code": "nat_cost",

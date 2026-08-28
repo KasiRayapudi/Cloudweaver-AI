@@ -22,19 +22,3 @@ resource "aws_iam_instance_profile" "instance" {
   name = "${local.name_prefix}-instance-profile"
   role = aws_iam_role.instance_role.name
 }
-
-# Least-privilege access to the data stores in this design.
-resource "aws_iam_role_policy" "workload_access" {
-  name   = "${local.name_prefix}-workload-access"
-  role   = aws_iam_role.instance_role.id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-    {
-      Effect   = "Allow"
-      Action   = ["s3:GetObject", "s3:PutObject", "s3:ListBucket"]
-      Resource = [aws_s3_bucket.assets.arn, "${aws_s3_bucket.assets.arn}/*"]
-    }
-    ]
-  })
-}

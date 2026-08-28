@@ -1,288 +1,413 @@
 """Resource mapping engine (paper section VI, step 3).
 
-The extractor reports what the user asked for.  This module works out what
-that actually requires on the target cloud: a VPC to live in, subnets split
-across availability zones, gateways for egress, security groups with the right
-allow-rules, target groups, IAM roles -- plus every edge between them.
+The extractor reports what the user asked for.  This module works out the
+minimum set of additional resources without which those cannot be deployed,
+and wires the graph together.
 
-All of it is deterministic, and all of it happens *before* either generator
-runs.  That ordering is the reason the diagram and the Terraform never
-disagree: they read the same completed graph.
+The rule it enforces, and the only one:
+
+    a resource exists because the user asked for it, or because something the
+    user asked for cannot be deployed without it.
+
+The dependency rules themselves live in :mod:`app.engine.policy` as data.
+This module is a fixed-point loop over that table plus the edge wiring, so it
+holds no opinion about any particular service.  That separation is what makes
+"never invent a resource" a property of the engine rather than a promise about
+its control flow.
 """
 
 from __future__ import annotations
 
+from app.engine.policy import (
+    REQUIREMENTS,
+    Requirement,
+    requirements_for,
+)
 from app.models.ir import (
     EdgeKind,
     InfrastructureSpec,
     Kind,
     Origin,
     Resource,
-    slugify,
 )
 from app.nlp.catalog import service_for
 
-# Resources that must sit inside a VPC.
-VPC_SCOPED: frozenset[Kind] = frozenset({
-    Kind.VM, Kind.AUTOSCALING_GROUP, Kind.CONTAINER_SERVICE, Kind.KUBERNETES_CLUSTER,
-    Kind.LOAD_BALANCER, Kind.SQL_DATABASE, Kind.CACHE, Kind.BASTION, Kind.FILE_STORAGE,
-    Kind.DATA_WAREHOUSE,
-})
+MAX_CLOSURE_PASSES = 12
 
-# Compute that runs application code and therefore may need egress + backends.
+# Default identifier used when a requirement creates a resource.
+CANONICAL_IDS: dict[Kind, str] = {
+    Kind.VPC: "main",
+    Kind.SUBNET_PUBLIC: "public",
+    Kind.SUBNET_PRIVATE: "private",
+    Kind.INTERNET_GATEWAY: "igw",
+    Kind.NAT_GATEWAY: "nat",
+    Kind.ROUTE_TABLE: "route_table",
+    Kind.SECURITY_GROUP: "app_sg",
+    Kind.ELASTIC_IP: "eip",
+    Kind.TARGET_GROUP: "app_tg",
+    Kind.IAM_ROLE: "instance_role",
+}
+
+# Compute that runs application code.
 COMPUTE: frozenset[Kind] = frozenset({
     Kind.VM, Kind.AUTOSCALING_GROUP, Kind.CONTAINER_SERVICE, Kind.KUBERNETES_CLUSTER,
     Kind.FUNCTION,
 })
 
-# Backends application compute typically talks to.
-BACKENDS: frozenset[Kind] = frozenset({
-    Kind.SQL_DATABASE, Kind.NOSQL_TABLE, Kind.CACHE, Kind.OBJECT_STORAGE,
-    Kind.QUEUE, Kind.TOPIC, Kind.FILE_STORAGE, Kind.DATA_WAREHOUSE, Kind.SECRET_STORE,
-})
+# Backends application compute talks to, and the verb for the diagram edge.
+BACKEND_LABELS: dict[Kind, str] = {
+    Kind.SQL_DATABASE: "queries",
+    Kind.NOSQL_TABLE: "reads/writes",
+    Kind.CACHE: "caches",
+    Kind.OBJECT_STORAGE: "objects",
+    Kind.QUEUE: "enqueues",
+    Kind.TOPIC: "publishes",
+    Kind.FILE_STORAGE: "mounts",
+    Kind.SECRET_STORE: "reads",
+    Kind.DATA_WAREHOUSE: "loads",
+}
 
-# Compute in the order a load balancer should prefer: a scaling group beats a
-# bare instance, and a container platform beats both.
+# Compute in the order a load balancer should prefer as its target.
 COMPUTE_ORDER: tuple[Kind, ...] = (
     Kind.AUTOSCALING_GROUP, Kind.CONTAINER_SERVICE, Kind.KUBERNETES_CLUSTER,
     Kind.VM, Kind.FUNCTION,
 )
 
-# Compute that can be a load balancer target.
-LB_TARGETS: tuple[Kind, ...] = (
-    Kind.AUTOSCALING_GROUP, Kind.CONTAINER_SERVICE, Kind.VM, Kind.KUBERNETES_CLUSTER,
-)
+# Resources that belong in a public subnet when a VPC exists.
+PUBLIC_BAND: frozenset[Kind] = frozenset({
+    Kind.LOAD_BALANCER, Kind.BASTION, Kind.NAT_GATEWAY,
+})
+
+# Resources that must never sit in a public subnet.
+PRIVATE_BAND: frozenset[Kind] = frozenset({
+    Kind.SQL_DATABASE, Kind.CACHE, Kind.DATA_WAREHOUSE,
+})
+
+# Default ingress ports per security group purpose.
+DEFAULT_PORTS: dict[str, list[int]] = {
+    "load-balancer": [80, 443],
+    "application": [80, 443],
+    "database": [5432],
+    "cache": [6379],
+    "bastion": [22],
+    "filesystem": [2049],
+}
 
 
 class ResourceMapper:
-    """Completes a draft spec into a deployable resource graph."""
+    """Completes a draft spec into the minimum deployable resource graph."""
 
     def map(self, spec: InfrastructureSpec) -> InfrastructureSpec:
         if not spec.resources:
             return spec
 
-        self._network(spec)
-        self._security_groups(spec)
-        self._load_balancing(spec)
-        self._edge_services(spec)
-        self._application_edges(spec)
-        self._identity(spec)
-        self._observability(spec)
-        self._containment_edges(spec)
+        self._close_over_requirements(spec)
+        self._place_in_subnets(spec)
+        self._configure_network(spec)
+        self._configure_security_groups(spec)
+        self._wire_edges(spec)
         return spec
 
-    # -- helpers -----------------------------------------------------------
+    # ------------------------------------------------------------------
+    # stage 1: mandatory dependency closure
+    # ------------------------------------------------------------------
 
-    @staticmethod
-    def _add(
-        spec: InfrastructureSpec,
-        resource_id: str,
-        kind: Kind,
-        *,
-        name: str | None = None,
-        count: int = 1,
-        origin: Origin = Origin.IMPLIED,
-        **properties,
+    def _close_over_requirements(self, spec: InfrastructureSpec) -> None:
+        """Add mandatory dependencies until the set stops growing.
+
+        Iterative rather than recursive because requirements are conditional:
+        adding a private subnet can make a NAT gateway mandatory, which makes a
+        public subnet mandatory, and so on. The loop settles when a full pass
+        adds nothing.
+        """
+        for _ in range(MAX_CLOSURE_PASSES):
+            added = False
+            # Snapshot: creating resources during iteration would skip entries.
+            for resource in list(spec.resources):
+                for requirement in requirements_for(resource.kind):
+                    if not requirement.applies(spec):
+                        continue
+                    if requirement.satisfied_by(spec):
+                        self._merge_properties(spec, requirement)
+                        dependency = self._resolve(spec, requirement)
+                    else:
+                        dependency = self._create(spec, requirement, because=resource)
+                        added = True
+                    # Record the real creation-order constraint, so the
+                    # dependency graph reflects the policy rather than being
+                    # inferred from whatever the diagram happens to draw.
+                    if dependency is not None:
+                        spec.connect(
+                            dependency.id, resource.id,
+                            EdgeKind.DEPENDENCY, "required by",
+                        )
+            if not added:
+                return
+        spec.warn(
+            "Dependency resolution did not settle; the design may be incomplete."
+        )
+
+    def _create(
+        self, spec: InfrastructureSpec, requirement: Requirement, because: Resource
     ) -> Resource:
-        info = service_for(kind, spec.provider)
-        existing = spec.get(slugify(resource_id))
-        if existing is not None:
-            existing.properties.update(properties)
-            return existing
+        info = service_for(requirement.kind, spec.provider)
+        resource_id = requirement.id_hint or CANONICAL_IDS.get(
+            requirement.kind, requirement.kind.value
+        )
+
         resource = Resource(
             id=resource_id,
-            kind=kind,
-            name=name or info.display,
+            kind=requirement.kind,
+            name=info.display,
             tier=info.tier,
-            origin=origin,
-            count=count,
-            properties=properties,
+            origin=Origin.REQUIRED,
+            properties=dict(requirement.properties),
             confidence=1.0,
+            reason=requirement.reason.format(name=because.name),
         )
         spec.resources.append(resource)
+        spec.note(f"{resource.name}: {resource.reason}")
         return resource
 
-    # -- stage 1: network --------------------------------------------------
+    @staticmethod
+    def _resolve(spec: InfrastructureSpec, requirement: Requirement) -> Resource | None:
+        """The existing resource that satisfies this requirement."""
+        if requirement.id_hint is not None:
+            return spec.get(requirement.id_hint)
+        return spec.first(requirement.kind)
 
-    def _network(self, spec: InfrastructureSpec) -> None:
-        needs_vpc = any(r.kind in VPC_SCOPED for r in spec.resources)
-        if not needs_vpc:
-            if spec.has(Kind.VPC):
-                spec.note("A VPC was requested but nothing in the design runs inside it.")
+    @staticmethod
+    def _merge_properties(spec: InfrastructureSpec, requirement: Requirement) -> None:
+        """Seed a requirement's properties onto a resource that already exists.
+
+        This is how a security group the user asked for by name acquires the
+        purpose of the tier it protects, instead of a second one being created
+        alongside it.
+        """
+        if not requirement.properties:
+            return
+        existing = (
+            spec.get(requirement.id_hint) if requirement.id_hint
+            else spec.first(requirement.kind)
+        )
+        if existing is not None:
+            for key, value in requirement.properties.items():
+                existing.properties.setdefault(key, value)
+
+    # ------------------------------------------------------------------
+    # stage 2: subnet placement
+    # ------------------------------------------------------------------
+
+    def _place_in_subnets(self, spec: InfrastructureSpec) -> None:
+        """Record which subnet band each VPC resource belongs to."""
+        if not spec.has(Kind.VPC):
+            return
+        private_intent = spec.private_placement_requested
+
+        for resource in spec.resources:
+            if resource.kind in PUBLIC_BAND:
+                resource.properties["subnet_band"] = "public"
+            elif resource.kind in PRIVATE_BAND:
+                resource.properties["subnet_band"] = "private"
+            elif resource.kind in COMPUTE and resource.kind is not Kind.FUNCTION:
+                # Compute follows stated intent only. The mere existence of a
+                # private subnet -- which a database creates for itself -- is
+                # not a reason to move a public web server behind a NAT.
+                resource.properties.setdefault(
+                    "subnet_band", "private" if private_intent else "public"
+                )
+
+    # ------------------------------------------------------------------
+    # stage 3: network configuration
+    # ------------------------------------------------------------------
+
+    def _configure_network(self, spec: InfrastructureSpec) -> None:
+        vpc = spec.first(Kind.VPC)
+        if vpc is None:
             return
 
-        azs = spec.availability_zones
-        vpc = spec.first(Kind.VPC) or self._add(spec, "main", Kind.VPC, name="VPC")
         vpc.properties.setdefault("cidr_block", "10.0.0.0/16")
         vpc.properties.setdefault("enable_dns_hostnames", True)
-        if vpc.origin is Origin.IMPLIED:
-            spec.note(f"Added a VPC ({vpc.properties['cidr_block']}) to host the workload.")
 
-        public = spec.first(Kind.SUBNET_PUBLIC) or self._add(
-            spec, "public", Kind.SUBNET_PUBLIC, name="Public Subnets"
-        )
-        public.count = azs
-        public.properties.update(
-            {"cidr_prefix": "10.0.{}.0/24", "offset": 1, "map_public_ip": True}
-        )
+        azs = spec.availability_zones
+        for subnet in spec.of_kind(Kind.SUBNET_PUBLIC):
+            subnet.count = azs
+            subnet.properties.update({"map_public_ip": True, "offset": 0})
+        for subnet in spec.of_kind(Kind.SUBNET_PRIVATE):
+            subnet.count = azs
+            subnet.properties.update({"map_public_ip": False, "offset": 10})
 
-        # Private subnets are only worth creating when something can live in them.
-        private_workloads = [
-            r for r in spec.resources
-            if r.kind in (VPC_SCOPED - {Kind.LOAD_BALANCER, Kind.BASTION})
-        ]
-        private = spec.first(Kind.SUBNET_PRIVATE)
-        if private_workloads or private:
-            private = private or self._add(
-                spec, "private", Kind.SUBNET_PRIVATE, name="Private Subnets"
-            )
-            private.count = azs
-            private.properties.update(
-                {"cidr_prefix": "10.0.{}.0/24", "offset": 11, "map_public_ip": False}
-            )
-            spec.connect(vpc.id, private.id, EdgeKind.CONTAINMENT)
-
-        spec.connect(vpc.id, public.id, EdgeKind.CONTAINMENT)
-        spec.note(f"Subnets are spread across {azs} availability zones.")
-
-        igw = spec.first(Kind.INTERNET_GATEWAY) or self._add(
-            spec, "igw", Kind.INTERNET_GATEWAY
-        )
-        spec.connect(igw.id, vpc.id, EdgeKind.CONTAINMENT, "attached to")
-
-        self._add(spec, "public_rt", Kind.ROUTE_TABLE, name="Public Route Table",
-                  scope="public")
-
-        if private is not None:
-            nat = spec.first(Kind.NAT_GATEWAY)
-            if nat is None:
-                nat = self._add(spec, "nat", Kind.NAT_GATEWAY)
-                spec.note(
-                    "Added a NAT gateway so private workloads have outbound internet access."
-                )
+        nat = spec.first(Kind.NAT_GATEWAY)
+        if nat is not None:
             nat.count = azs if spec.high_availability else 1
             if nat.count > 1:
-                spec.note(f"One NAT gateway per AZ ({nat.count} total) for high availability.")
-            self._add(spec, "private_rt", Kind.ROUTE_TABLE, name="Private Route Table",
-                      scope="private")
-            spec.connect(nat.id, igw.id, EdgeKind.TRAFFIC, "egress")
+                spec.note(
+                    f"One NAT gateway per availability zone ({nat.count} total) "
+                    "because high availability was requested."
+                )
 
-    # -- stage 2: security groups -----------------------------------------
+        # An Elastic IP created for a NAT gateway scales with it; one attached
+        # to an instance does not.
+        eip = spec.first(Kind.ELASTIC_IP)
+        if eip is not None and eip.origin is Origin.REQUIRED and nat is not None:
+            eip.count = nat.count
+            eip.properties.setdefault("attached_to", nat.id)
+        elif eip is not None:
+            target = self._primary_compute(spec)
+            if target is not None:
+                eip.properties.setdefault("attached_to", target.id)
 
-    def _security_groups(self, spec: InfrastructureSpec) -> None:
-        if not spec.has(Kind.VPC):
+    # ------------------------------------------------------------------
+    # stage 4: security groups
+    # ------------------------------------------------------------------
+
+    def _configure_security_groups(self, spec: InfrastructureSpec) -> None:
+        """Give each security group a purpose and a least-privilege ingress.
+
+        Only groups that already exist are configured. The closure decides how
+        many there are; this decides what they allow.
+        """
+        groups = spec.of_kind(Kind.SECURITY_GROUP)
+        if not groups:
             return
 
         lb = spec.first(Kind.LOAD_BALANCER)
         app = self._primary_compute(spec)
-        db = spec.first(Kind.SQL_DATABASE)
-        cache = spec.first(Kind.CACHE)
-        bastion = spec.first(Kind.BASTION)
 
-        # A security group the *user* asked for becomes the app SG. Groups this
-        # stage created on earlier runs must not be picked up here.
-        generic = next(
-            (sg for sg in spec.of_kind(Kind.SECURITY_GROUP) if sg.origin is Origin.EXPLICIT),
-            None,
-        )
+        # The closure already created exactly one group per consumer, with the
+        # id and purpose recorded in the policy table, so this only has to fill
+        # in what each one allows.
+        protected_by: dict[str, Resource | None] = {
+            "alb_sg": lb,
+            "app_sg": app,
+            "db_sg": spec.first(Kind.SQL_DATABASE),
+            "cache_sg": spec.first(Kind.CACHE),
+            "bastion_sg": spec.first(Kind.BASTION),
+            "warehouse_sg": spec.first(Kind.DATA_WAREHOUSE),
+        }
 
-        if lb is not None:
-            sg = self._add(
-                spec, "alb_sg", Kind.SECURITY_GROUP, name="ALB Security Group",
-                ingress_from="0.0.0.0/0",
-                ingress_ports=[80, 443],
-                purpose="load-balancer",
+        for group in groups:
+            purpose = str(group.properties.get("purpose") or "application")
+            self._configure_group(
+                spec, group, purpose, protected_by.get(group.id), lb, app
             )
-            spec.connect(sg.id, lb.id, EdgeKind.DEPENDENCY, "protects")
 
-        if app is not None:
-            sg_id = generic.id if generic is not None else "app_sg"
-            sg = self._add(
-                spec, sg_id, Kind.SECURITY_GROUP, name="App Security Group",
-                ingress_from="alb_sg" if lb is not None else "0.0.0.0/0",
-                ingress_ports=[80, 8080] if lb is not None else [80, 443],
-                purpose="application",
-            )
-            if lb is None and generic is None:
-                spec.warn(
-                    "Application compute is reachable from 0.0.0.0/0 because no load "
-                    "balancer was requested. Restrict the ingress CIDR before deploying."
-                )
-            spec.connect(sg.id, app.id, EdgeKind.DEPENDENCY, "protects")
+    def _configure_group(
+        self,
+        spec: InfrastructureSpec,
+        group: Resource,
+        purpose: str,
+        protects: Resource | None,
+        lb: Resource | None,
+        app: Resource | None,
+    ) -> None:
+        props = group.properties
+        props["purpose"] = purpose
+        group.name = {
+            "load-balancer": "ALB Security Group",
+            "application": "App Security Group",
+            "database": "Database Security Group",
+            "cache": "Cache Security Group",
+            "bastion": "Bastion Security Group",
+        }.get(purpose, group.name)
 
-        if db is not None:
-            port = 3306 if str(db.properties.get("engine", "")).startswith("mysql") else 5432
-            db.properties.setdefault("port", port)
-            sg = self._add(
-                spec, "db_sg", Kind.SECURITY_GROUP, name="Database Security Group",
-                ingress_from="app_sg" if app is not None else "vpc",
-                ingress_ports=[port],
-                purpose="database",
-            )
-            spec.connect(sg.id, db.id, EdgeKind.DEPENDENCY, "protects")
+        # Ports the user named win over any default.
+        if not props.get("ingress_ports"):
+            ports = list(DEFAULT_PORTS.get(purpose, [443]))
+            if purpose == "database" and spec.first(Kind.SQL_DATABASE) is not None:
+                engine = str(spec.first(Kind.SQL_DATABASE).properties.get("engine", ""))
+                mysql_family = ("mysql", "aurora-mysql", "mariadb")
+                ports = [3306] if engine.startswith(mysql_family) else [5432]
+            props["ingress_ports"] = ports
 
-        if cache is not None:
-            sg = self._add(
-                spec, "cache_sg", Kind.SECURITY_GROUP, name="Cache Security Group",
-                ingress_from="app_sg" if app is not None else "vpc",
-                ingress_ports=[6379],
-                purpose="cache",
-            )
-            spec.connect(sg.id, cache.id, EdgeKind.DEPENDENCY, "protects")
+        if not props.get("ingress_from"):
+            if purpose == "load-balancer":
+                props["ingress_from"] = "0.0.0.0/0"
+            elif purpose == "application":
+                props["ingress_from"] = "alb_sg" if lb is not None else "0.0.0.0/0"
+            elif purpose == "bastion":
+                props["ingress_from"] = "0.0.0.0/0"
+            else:
+                props["ingress_from"] = "app_sg" if app is not None else "vpc"
 
-        if bastion is not None:
-            sg = self._add(
-                spec, "bastion_sg", Kind.SECURITY_GROUP, name="Bastion Security Group",
-                ingress_from="0.0.0.0/0", ingress_ports=[22], purpose="bastion",
-            )
-            spec.connect(sg.id, bastion.id, EdgeKind.DEPENDENCY, "protects")
-            spec.warn(
-                "The bastion host accepts SSH from 0.0.0.0/0. Narrow this to your "
-                "office or VPN range before deploying."
-            )
-            if app is not None:
-                spec.connect(bastion.id, app.id, EdgeKind.DEPENDENCY, "admin access")
+        if protects is not None:
+            spec.connect(group.id, protects.id, EdgeKind.DEPENDENCY, "protects")
 
-    # -- stage 3: load balancing ------------------------------------------
+        # Database ports follow the engine even when the group was reused.
+        if purpose == "database":
+            db = spec.first(Kind.SQL_DATABASE)
+            if db is not None:
+                db.properties.setdefault("port", props["ingress_ports"][0])
 
-    def _load_balancing(self, spec: InfrastructureSpec) -> None:
-        lb = spec.first(Kind.LOAD_BALANCER)
-        if lb is None:
+    # ------------------------------------------------------------------
+    # stage 5: edges
+    # ------------------------------------------------------------------
+
+    def _wire_edges(self, spec: InfrastructureSpec) -> None:
+        self._network_edges(spec)
+        self._traffic_edges(spec)
+        self._data_edges(spec)
+        self._identity_edges(spec)
+
+    def _network_edges(self, spec: InfrastructureSpec) -> None:
+        vpc = spec.first(Kind.VPC)
+        if vpc is None:
             return
-        target = self._primary_compute(spec, kinds=LB_TARGETS)
-        if target is None:
-            spec.warn("A load balancer was requested but there is no compute to route to.")
-            return
+        for subnet in spec.of_kind(Kind.SUBNET_PUBLIC, Kind.SUBNET_PRIVATE):
+            spec.connect(vpc.id, subnet.id, EdgeKind.CONTAINMENT)
+        igw = spec.first(Kind.INTERNET_GATEWAY)
+        if igw is not None:
+            # Container -> contained, always. Pointing this the other way round
+            # ("the gateway is attached to the VPC") reads naturally but makes
+            # the creation-order graph cyclic, since the VPC must exist first.
+            spec.connect(vpc.id, igw.id, EdgeKind.CONTAINMENT, "attached to")
+        nat = spec.first(Kind.NAT_GATEWAY)
+        if nat is not None and igw is not None:
+            spec.connect(nat.id, igw.id, EdgeKind.TRAFFIC, "egress")
+        for rt in spec.of_kind(Kind.ROUTE_TABLE):
+            spec.connect(vpc.id, rt.id, EdgeKind.CONTAINMENT)
+        eip = spec.first(Kind.ELASTIC_IP)
+        if eip is not None:
+            attached = spec.get(str(eip.properties.get("attached_to", "")))
+            if attached is not None:
+                spec.connect(eip.id, attached.id, EdgeKind.DEPENDENCY, "public IP")
 
-        tg = self._add(
-            spec, "app_tg", Kind.TARGET_GROUP, name="Target Group",
-            port=lb.properties.get("listener_port", 80),
-            protocol="HTTP",
-            health_check_path="/health",
-        )
-        spec.connect(lb.id, tg.id, EdgeKind.TRAFFIC, "forwards")
-        spec.connect(tg.id, target.id, EdgeKind.TRAFFIC, "targets")
-        lb.properties.setdefault("scheme", "internet-facing")
-
-    # -- stage 4: edge services -------------------------------------------
-
-    def _edge_services(self, spec: InfrastructureSpec) -> None:
-        cdn = spec.first(Kind.CDN)
+    def _traffic_edges(self, spec: InfrastructureSpec) -> None:
         lb = spec.first(Kind.LOAD_BALANCER)
+        tg = spec.first(Kind.TARGET_GROUP)
+        target = self._primary_compute(spec, exclude={Kind.FUNCTION})
+
+        if lb is not None and tg is not None:
+            spec.connect(lb.id, tg.id, EdgeKind.TRAFFIC, "forwards")
+            lb.properties.setdefault("scheme", "internet-facing")
+            lb.properties.setdefault("listener_port", 80)
+            tg.properties.setdefault("port", 80)
+            tg.properties.setdefault("health_check_path", "/health")
+            if target is not None:
+                spec.connect(tg.id, target.id, EdgeKind.TRAFFIC, "targets")
+            else:
+                spec.warn("The load balancer has no compute to route to.")
+
         api = spec.first(Kind.API_GATEWAY)
-        bucket = spec.first(Kind.OBJECT_STORAGE)
-        dns = spec.first(Kind.DNS_ZONE)
-        waf = spec.first(Kind.WAF)
+        fn = spec.first(Kind.FUNCTION)
+        if api is not None:
+            if fn is not None:
+                api.properties.setdefault("integration", "lambda")
+                spec.connect(api.id, fn.id, EdgeKind.TRAFFIC, "invokes")
+            elif lb is not None:
+                api.properties.setdefault("integration", "http_proxy")
+                spec.connect(api.id, lb.id, EdgeKind.TRAFFIC, "proxies")
+            else:
+                spec.warn("API Gateway was requested but has no backend to integrate with.")
 
+        cdn = spec.first(Kind.CDN)
         if cdn is not None:
+            bucket = spec.first(Kind.OBJECT_STORAGE)
             if bucket is not None:
                 cdn.properties.setdefault("origin", bucket.id)
                 cdn.properties.setdefault("origin_type", "s3")
                 spec.connect(cdn.id, bucket.id, EdgeKind.TRAFFIC, "origin")
-                bucket.properties["cdn_fronted"] = True
                 if bucket.properties.get("public_read"):
-                    # CloudFront reaches the bucket through origin access
-                    # control, so the bucket itself stays private.
                     bucket.properties["public_read"] = False
                     spec.note(
                         "The bucket is kept private and served through CloudFront "
@@ -293,144 +418,90 @@ class ResourceMapper:
                 cdn.properties.setdefault("origin_type", "alb")
                 spec.connect(cdn.id, lb.id, EdgeKind.TRAFFIC, "origin")
             else:
-                spec.warn("CloudFront was requested but no origin (S3 bucket or ALB) exists.")
+                spec.warn("CloudFront was requested but has no origin to serve.")
 
-        if api is not None:
-            fn = spec.first(Kind.FUNCTION)
-            if fn is not None:
-                spec.connect(api.id, fn.id, EdgeKind.TRAFFIC, "invokes")
-                api.properties.setdefault("integration", "lambda")
-            elif lb is not None:
-                spec.connect(api.id, lb.id, EdgeKind.TRAFFIC, "proxies")
-                api.properties.setdefault("integration", "http_proxy")
-            else:
-                spec.warn("API Gateway was requested but has no backend integration.")
-
+        waf = spec.first(Kind.WAF)
         if waf is not None:
             attach = cdn or api or lb
             if attach is not None:
-                waf.properties.setdefault("scope", "CLOUDFRONT" if attach is cdn else "REGIONAL")
+                waf.properties.setdefault(
+                    "scope", "CLOUDFRONT" if attach is cdn else "REGIONAL"
+                )
                 spec.connect(waf.id, attach.id, EdgeKind.DEPENDENCY, "inspects")
 
+        dns = spec.first(Kind.DNS_ZONE)
         if dns is not None:
             entry = cdn or api or lb
             if entry is not None:
                 dns.properties.setdefault("alias_target", entry.id)
                 spec.connect(dns.id, entry.id, EdgeKind.TRAFFIC, "alias")
 
-    # -- stage 5: application data flow -----------------------------------
-
-    def _application_edges(self, spec: InfrastructureSpec) -> None:
-        compute = [r for r in spec.resources if r.kind in COMPUTE]
-        backends = [r for r in spec.resources if r.kind in BACKENDS]
-        for c in compute:
-            for b in backends:
-                label = {
-                    Kind.SQL_DATABASE: "queries",
-                    Kind.NOSQL_TABLE: "reads/writes",
-                    Kind.CACHE: "caches",
-                    Kind.OBJECT_STORAGE: "objects",
-                    Kind.QUEUE: "enqueues",
-                    Kind.TOPIC: "publishes",
-                    Kind.FILE_STORAGE: "mounts",
-                    Kind.SECRET_STORE: "reads",
-                    Kind.DATA_WAREHOUSE: "loads",
-                }.get(b.kind, "uses")
-                spec.connect(c.id, b.id, EdgeKind.DATA, label)
-
         queue = spec.first(Kind.QUEUE)
-        fn = spec.first(Kind.FUNCTION)
         if queue is not None and fn is not None:
             spec.connect(queue.id, fn.id, EdgeKind.TRAFFIC, "triggers")
 
+        bastion = spec.first(Kind.BASTION)
+        if bastion is not None and target is not None:
+            spec.connect(bastion.id, target.id, EdgeKind.DEPENDENCY, "admin access")
+
         registry = spec.first(Kind.CONTAINER_REGISTRY)
-        for runner in spec.of_kind(Kind.CONTAINER_SERVICE, Kind.KUBERNETES_CLUSTER):
-            if registry is not None:
+        if registry is not None:
+            for runner in spec.of_kind(Kind.CONTAINER_SERVICE, Kind.KUBERNETES_CLUSTER):
                 spec.connect(registry.id, runner.id, EdgeKind.DEPENDENCY, "images")
 
-    # -- stage 6: identity -------------------------------------------------
-
-    def _identity(self, spec: InfrastructureSpec) -> None:
+    def _data_edges(self, spec: InfrastructureSpec) -> None:
         compute = [r for r in spec.resources if r.kind in COMPUTE]
-        if not compute:
-            return
+        backends = [r for r in spec.resources if r.kind in BACKEND_LABELS]
         for c in compute:
-            if c.kind is Kind.FUNCTION:
-                role = self._add(
-                    spec, "lambda_role", Kind.IAM_ROLE, name="Lambda Execution Role",
-                    service="lambda.amazonaws.com",
-                )
-            elif c.kind in (Kind.VM, Kind.AUTOSCALING_GROUP, Kind.BASTION):
-                role = self._add(
-                    spec, "instance_role", Kind.IAM_ROLE, name="EC2 Instance Role",
-                    service="ec2.amazonaws.com",
-                )
-            elif c.kind is Kind.CONTAINER_SERVICE:
-                role = self._add(
-                    spec, "task_role", Kind.IAM_ROLE, name="ECS Task Execution Role",
-                    service="ecs-tasks.amazonaws.com",
-                )
-            else:
-                role = self._add(
-                    spec, "cluster_role", Kind.IAM_ROLE, name="EKS Cluster Role",
-                    service="eks.amazonaws.com",
-                )
-            spec.connect(role.id, c.id, EdgeKind.DEPENDENCY, "assumed by")
+            for b in backends:
+                spec.connect(c.id, b.id, EdgeKind.DATA, BACKEND_LABELS[b.kind])
 
-        if spec.has(Kind.SQL_DATABASE) and not spec.has(Kind.SECRET_STORE):
-            secret = self._add(
-                spec, "db_secret", Kind.SECRET_STORE, name="DB Credentials",
-                description="Master credentials for the managed database",
-            )
-            db = spec.first(Kind.SQL_DATABASE)
-            if db is not None:
-                spec.connect(secret.id, db.id, EdgeKind.DEPENDENCY, "credentials")
-            # This secret is created after _application_edges has run, so wire
-            # the readers up here rather than leaving it until a second pass.
-            for c in compute:
-                spec.connect(c.id, secret.id, EdgeKind.DATA, "reads")
-            spec.note("Database credentials are stored in Secrets Manager, not in the code.")
+    def _identity_edges(self, spec: InfrastructureSpec) -> None:
+        """Attach each IAM role to the compute that assumes it.
 
-    # -- stage 7: observability -------------------------------------------
-
-    def _observability(self, spec: InfrastructureSpec) -> None:
-        if spec.environment != "prod" or spec.has(Kind.MONITORING):
+        One role per compute family, per the rule that roles are not invented:
+        an EC2 workload gets an instance role, a Lambda gets an execution role,
+        and nothing else is created.
+        """
+        roles = spec.of_kind(Kind.IAM_ROLE)
+        if not roles:
             return
-        monitored = [r for r in spec.resources if r.kind in COMPUTE or r.kind is Kind.SQL_DATABASE]
-        if not monitored:
-            return
-        cw = self._add(spec, "monitoring", Kind.MONITORING, name="CloudWatch Alarms")
-        for r in monitored:
-            spec.connect(cw.id, r.id, EdgeKind.DEPENDENCY, "watches")
-        spec.note("Production environment: CloudWatch alarms added for compute and database.")
 
-    # -- stage 8: containment ---------------------------------------------
+        # Which compute each role id serves. The closure created one role per
+        # family that is actually present, so there is nothing to invent here.
+        families: dict[str, tuple[frozenset[Kind], str]] = {
+            "instance_role": (
+                frozenset({Kind.VM, Kind.AUTOSCALING_GROUP, Kind.BASTION}),
+                "EC2 Instance Role",
+            ),
+            "lambda_role": (frozenset({Kind.FUNCTION}), "Lambda Execution Role"),
+            "task_role": (frozenset({Kind.CONTAINER_SERVICE}), "ECS Task Execution Role"),
+            "cluster_role": (frozenset({Kind.KUBERNETES_CLUSTER}), "EKS Cluster Role"),
+        }
 
-    def _containment_edges(self, spec: InfrastructureSpec) -> None:
-        """Record which subnet band each VPC-scoped resource belongs to."""
-        public_band = {Kind.LOAD_BALANCER, Kind.BASTION, Kind.NAT_GATEWAY}
-        for r in spec.resources:
-            if r.kind in VPC_SCOPED or r.kind is Kind.NAT_GATEWAY:
-                r.properties.setdefault(
-                    "subnet_band", "public" if r.kind in public_band else "private"
-                )
+        for role in roles:
+            kinds, role_name = families.get(role.id, (frozenset(), role.name))
+            role.name = role_name
+            role.properties.setdefault("service", "ec2.amazonaws.com")
+            for consumer in (r for r in spec.resources if r.kind in kinds):
+                spec.connect(role.id, consumer.id, EdgeKind.DEPENDENCY, "assumed by")
 
-    # -- selection ---------------------------------------------------------
+    # ------------------------------------------------------------------
+    # selection
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _primary_compute(
-        spec: InfrastructureSpec, kinds: tuple[Kind, ...] = COMPUTE_ORDER
+        spec: InfrastructureSpec, exclude: frozenset[Kind] | set[Kind] = frozenset()
     ) -> Resource | None:
-        """Pick the compute resource that fronts the application.
-
-        Preference order matters: an ASG beats a bare instance, and a
-        container platform beats both, because that is what a load balancer
-        should be pointed at when several are present.
-        """
+        """The compute resource that fronts the application, if any."""
         for kind in COMPUTE_ORDER:
-            if kind not in kinds:
+            if kind in exclude:
                 continue
             found = spec.first(kind)
             if found is not None:
                 return found
         return None
+
+
+__all__ = ["ResourceMapper", "COMPUTE", "COMPUTE_ORDER", "REQUIREMENTS"]

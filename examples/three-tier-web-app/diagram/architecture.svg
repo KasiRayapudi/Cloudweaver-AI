@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1016" height="640.0" viewBox="0 0 1016 640.0" role="img" aria-label="Cloud architecture diagram for production-three-tier-prod">
+<svg xmlns="http://www.w3.org/2000/svg" width="1228" height="640.0" viewBox="0 0 1228 640.0" role="img" aria-label="Cloud architecture diagram for production-three-tier-prod">
 
   <style>
     .bg { fill: #ffffff; }
@@ -92,32 +92,36 @@
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#3f9c5f"/>
     </marker>
   </defs>
-  <rect class="bg" width="1016" height="640.0" rx="8"/>
+  <rect class="bg" width="1228" height="640.0" rx="8"/>
   <text class="title" x="20" y="28">production-three-tier-prod</text>
   <text class="subtitle" x="20" y="45">AWS - eu-west-1 - prod</text>
-  <rect class="group-box" x="110.0" y="182.0" width="654.0" height="418.0" rx="12"/>
+  <rect class="group-box" x="110.0" y="182.0" width="866.0" height="418.0" rx="12"/>
   <text class="group-label" x="122.0" y="199.0">VPC - 10.0.0.0/16 - 3 AZs</text>
-  <rect class="group-box" x="780.0" y="56.0" width="196.0" height="532.0" rx="12"/>
-  <text class="group-label" x="792.0" y="73.0">Cross-cutting - applied across the stack</text>
+  <rect class="group-box" x="992.0" y="56.0" width="196.0" height="388.0" rx="12"/>
+  <text class="group-label" x="1004.0" y="73.0">Cross-cutting - applied across the stack</text>
   <text class="band" x="18" y="254.0">PUBLIC SUBNETS</text>
   <text class="band" x="18" y="400.0">PRIVATE SUBNETS</text>
   <text class="band" x="18" y="546.0">DATA LAYER</text>
-  <path class="edge" d="M 418.0 138.0 L 418.0 177.0 L 225.0 177.0 L 225.0 216.0" marker-end="url(#arrow)"/>
-  <path class="edge" d="M 418.0 138.0 L 418.0 177.0 L 649.0 177.0 L 649.0 216.0" marker-end="url(#arrow)"/>
-  <path class="edge" d="M 314.0 250.0 L 560.0 250.0" marker-end="url(#arrow)"/>
-  <text class="edge-label" x="566.0" y="246.0">forwards</text>
-  <path class="edge" d="M 649.0 284.0 L 649.0 323.0 L 437.0 323.0 L 437.0 362.0" marker-end="url(#arrow)"/>
-  <text class="edge-label" x="443.0" y="319.0">targets</text>
-  <path class="edge data" d="M 437.0 430.0 L 437.0 508.0" stroke-dasharray="6 4" marker-end="url(#arrow-data)"/>
-  <text class="edge-label" x="443.0" y="504.0">queries</text>
-  <path class="edge data" d="M 437.0 430.0 L 437.0 469.0 L 225.0 469.0 L 225.0 508.0" stroke-dasharray="6 4" marker-end="url(#arrow-data)"/>
-  <text class="edge-label" x="231.0" y="465.0">caches</text>
-  <path class="edge data" d="M 437.0 430.0 L 437.0 469.0 L 649.0 469.0 L 649.0 508.0" stroke-dasharray="6 4" marker-end="url(#arrow-data)"/>
-  <text class="edge-label" x="655.0" y="465.0">objects</text>
+  <path class="edge" d="M 524.0 138.0 L 524.0 177.0 L 225.0 177.0 L 225.0 216.0" marker-end="url(#arrow)"/>
+  <path class="edge" d="M 524.0 138.0 L 524.0 177.0 L 861.0 177.0 L 861.0 216.0" marker-end="url(#arrow)"/>
+  <path class="edge dep" d="M 772.0 250.0 L 314.0 250.0" stroke-dasharray="2 5" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="320.0" y="246.0">required by</text>
+  <path class="edge dep" d="M 526.0 250.0 L 560.0 250.0" stroke-dasharray="2 5" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="566.0" y="246.0">required by</text>
+  <path class="edge" d="M 314.0 250.0 L 772.0 250.0" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="778.0" y="246.0">forwards</text>
+  <path class="edge" d="M 861.0 284.0 L 861.0 323.0 L 543.0 323.0 L 543.0 362.0" marker-end="url(#arrow)"/>
+  <text class="edge-label" x="549.0" y="319.0">targets</text>
+  <path class="edge data" d="M 543.0 430.0 L 543.0 508.0" stroke-dasharray="6 4" marker-end="url(#arrow-data)"/>
+  <text class="edge-label" x="549.0" y="504.0">queries</text>
+  <path class="edge data" d="M 543.0 430.0 L 543.0 469.0 L 331.0 469.0 L 331.0 508.0" stroke-dasharray="6 4" marker-end="url(#arrow-data)"/>
+  <text class="edge-label" x="337.0" y="465.0">caches</text>
+  <path class="edge data" d="M 543.0 430.0 L 543.0 469.0 L 755.0 469.0 L 755.0 508.0" stroke-dasharray="6 4" marker-end="url(#arrow-data)"/>
+  <text class="edge-label" x="761.0" y="465.0">objects</text>
   <g><title>Internet</title>
-    <rect class="node fill-internet" x="348.0" y="86.0" width="140.0" height="52.0" rx="10"/>
-    <text class="label text-internet" x="362.0" y="112.0">Internet</text>
-    <text class="sublabel text-internet" x="362.0" y="134.0">public traffic</text>
+    <rect class="node fill-internet" x="454.0" y="86.0" width="140.0" height="52.0" rx="10"/>
+    <text class="label text-internet" x="468.0" y="112.0">Internet</text>
+    <text class="sublabel text-internet" x="468.0" y="134.0">public traffic</text>
   </g>
   <g><title>internal=False; listener_port=80; scheme=internet-facing; subnet_band=public</title>
     <rect class="node fill-traffic" x="136.0" y="216.0" width="178.0" height="68.0" rx="10"/>
@@ -126,95 +130,88 @@
     <text class="label text-traffic" x="190.0" y="242.0">Application Load Balancer</text>
     <text class="sublabel text-traffic" x="150.0" y="264.0">alb</text>
   </g>
-  <g><title>instance_type=t3.medium; min_size=2; max_size=6; desired_capacity=2; subnet_band=private</title>
-    <rect class="node fill-compute" x="348.0" y="362.0" width="178.0" height="68.0" rx="10"/>
-    <rect class="badge-compute" x="360.0" y="374.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="377.0" y="386.0" text-anchor="middle">ASG</text>
-    <text class="label text-compute" x="402.0" y="388.0">Auto Scaling Group</text>
-    <text class="sublabel text-compute" x="362.0" y="410.0">t3.medium</text>
+  <g><title>os=amazon linux; ami_name_filter=al2023-ami-*-x86_64; ami_owner=amazon; ssh_user=ec2-user; instance_type=t3.medium; min_size=2</title>
+    <rect class="node fill-compute" x="454.0" y="362.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-compute" x="466.0" y="374.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="483.0" y="386.0" text-anchor="middle">ASG</text>
+    <text class="label text-compute" x="508.0" y="388.0">Auto Scaling Group</text>
+    <text class="sublabel text-compute" x="468.0" y="410.0">t3.medium</text>
   </g>
   <g><title>engine=postgres; engine_version=15.5; instance_class=db.t3.medium; allocated_storage=20; multi_az=True; backup_retention_period=7</title>
-    <rect class="node fill-data" x="348.0" y="508.0" width="178.0" height="68.0" rx="10"/>
-    <rect class="badge-data" x="360.0" y="520.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="377.0" y="532.0" text-anchor="middle">RDS</text>
-    <text class="label text-data" x="402.0" y="534.0">RDS Instance</text>
-    <text class="sublabel text-data" x="362.0" y="556.0">postgres</text>
+    <rect class="node fill-data" x="454.0" y="508.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-data" x="466.0" y="520.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="483.0" y="532.0" text-anchor="middle">RDS</text>
+    <text class="label text-data" x="508.0" y="534.0">RDS Instance</text>
+    <text class="sublabel text-data" x="468.0" y="556.0">postgres</text>
   </g>
   <g><title>node_type=cache.t3.micro; num_nodes=2; subnet_band=private</title>
-    <rect class="node fill-data" x="136.0" y="508.0" width="178.0" height="68.0" rx="10"/>
-    <rect class="badge-data" x="148.0" y="520.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="165.0" y="532.0" text-anchor="middle">CCH</text>
-    <text class="label text-data" x="190.0" y="534.0">ElastiCache Redis</text>
-    <text class="sublabel text-data" x="150.0" y="556.0">cache.t3.micro</text>
+    <rect class="node fill-data" x="242.0" y="508.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-data" x="254.0" y="520.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="271.0" y="532.0" text-anchor="middle">CCH</text>
+    <text class="label text-data" x="296.0" y="534.0">ElastiCache Redis</text>
+    <text class="sublabel text-data" x="256.0" y="556.0">cache.t3.micro</text>
   </g>
   <g><title>versioning=True; encrypted=True; public_read=False</title>
-    <rect class="node fill-storage" x="560.0" y="508.0" width="178.0" height="68.0" rx="10"/>
-    <rect class="badge-storage" x="572.0" y="520.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="589.0" y="532.0" text-anchor="middle">S3</text>
-    <text class="label text-storage" x="614.0" y="534.0">S3 Bucket</text>
-    <text class="sublabel text-storage" x="574.0" y="556.0">assets</text>
+    <rect class="node fill-storage" x="666.0" y="508.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-storage" x="678.0" y="520.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="695.0" y="532.0" text-anchor="middle">S3</text>
+    <text class="label text-storage" x="720.0" y="534.0">S3 Bucket</text>
+    <text class="sublabel text-storage" x="680.0" y="556.0">assets</text>
+  </g>
+  <g><title>port=80; health_check_path=/health</title>
+    <rect class="node fill-traffic implied" x="772.0" y="216.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-traffic" x="784.0" y="228.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="801.0" y="240.0" text-anchor="middle">TG</text>
+    <text class="label text-traffic" x="826.0" y="242.0">Target Group</text>
+    <text class="sublabel text-traffic" x="786.0" y="264.0">app tg</text>
   </g>
   <g><title>subnet_band=public</title>
+    <rect class="node fill-network implied" x="560.0" y="216.0" width="178.0" height="68.0" rx="10"/>
+    <rect class="badge-network" x="572.0" y="228.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="589.0" y="240.0" text-anchor="middle">NAT</text>
+    <text class="label text-network" x="614.0" y="242.0">NAT Gateway</text>
+    <text class="sublabel text-network" x="574.0" y="264.0">x3</text>
+  </g>
+  <g><title>attached_to=nat</title>
     <rect class="node fill-network implied" x="348.0" y="216.0" width="178.0" height="68.0" rx="10"/>
     <rect class="badge-network" x="360.0" y="228.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="377.0" y="240.0" text-anchor="middle">NAT</text>
-    <text class="label text-network" x="402.0" y="242.0">NAT Gateway</text>
+    <text class="badge" x="377.0" y="240.0" text-anchor="middle">EIP</text>
+    <text class="label text-network" x="402.0" y="242.0">Elastic IP</text>
     <text class="sublabel text-network" x="362.0" y="264.0">x3</text>
   </g>
-  <g><title>port=80; protocol=HTTP; health_check_path=/health</title>
-    <rect class="node fill-traffic implied" x="560.0" y="216.0" width="178.0" height="68.0" rx="10"/>
-    <rect class="badge-traffic" x="572.0" y="228.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="589.0" y="240.0" text-anchor="middle">TG</text>
-    <text class="label text-traffic" x="614.0" y="242.0">Target Group</text>
-    <text class="sublabel text-traffic" x="574.0" y="264.0">app tg</text>
+  <g><title>purpose=load-balancer; ingress_from=0.0.0.0/0</title>
+    <rect class="node fill-security implied" x="1006.0" y="86.0" width="168.0" height="56.0" rx="10"/>
+    <rect class="badge-security" x="1018.0" y="98.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="1035.0" y="110.0" text-anchor="middle">SG</text>
+    <text class="label text-security" x="1060.0" y="112.0">Security Group</text>
+    <text class="sublabel text-security" x="1020.0" y="134.0">alb sg</text>
   </g>
-  <g><title>ingress_from=0.0.0.0/0; purpose=load-balancer</title>
-    <rect class="node fill-security implied" x="794.0" y="86.0" width="168.0" height="56.0" rx="10"/>
-    <rect class="badge-security" x="806.0" y="98.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="823.0" y="110.0" text-anchor="middle">SG</text>
-    <text class="label text-security" x="848.0" y="112.0">Security Group</text>
-    <text class="sublabel text-security" x="808.0" y="134.0">alb sg</text>
-  </g>
-  <g><title>ingress_from=alb_sg; purpose=application</title>
-    <rect class="node fill-security implied" x="794.0" y="158.0" width="168.0" height="56.0" rx="10"/>
-    <rect class="badge-security" x="806.0" y="170.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="823.0" y="182.0" text-anchor="middle">SG</text>
-    <text class="label text-security" x="848.0" y="184.0">Security Group</text>
-    <text class="sublabel text-security" x="808.0" y="206.0">app sg</text>
-  </g>
-  <g><title>ingress_from=app_sg; purpose=database</title>
-    <rect class="node fill-security implied" x="794.0" y="230.0" width="168.0" height="56.0" rx="10"/>
-    <rect class="badge-security" x="806.0" y="242.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="823.0" y="254.0" text-anchor="middle">SG</text>
-    <text class="label text-security" x="848.0" y="256.0">Security Group</text>
-    <text class="sublabel text-security" x="808.0" y="278.0">db sg</text>
-  </g>
-  <g><title>ingress_from=app_sg; purpose=cache</title>
-    <rect class="node fill-security implied" x="794.0" y="302.0" width="168.0" height="56.0" rx="10"/>
-    <rect class="badge-security" x="806.0" y="314.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="823.0" y="326.0" text-anchor="middle">SG</text>
-    <text class="label text-security" x="848.0" y="328.0">Security Group</text>
-    <text class="sublabel text-security" x="808.0" y="350.0">cache sg</text>
+  <g><title>purpose=application; ingress_from=alb_sg</title>
+    <rect class="node fill-security implied" x="1006.0" y="158.0" width="168.0" height="56.0" rx="10"/>
+    <rect class="badge-security" x="1018.0" y="170.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="1035.0" y="182.0" text-anchor="middle">SG</text>
+    <text class="label text-security" x="1060.0" y="184.0">Security Group</text>
+    <text class="sublabel text-security" x="1020.0" y="206.0">app sg</text>
   </g>
   <g><title>service=ec2.amazonaws.com</title>
-    <rect class="node fill-security implied" x="794.0" y="374.0" width="168.0" height="56.0" rx="10"/>
-    <rect class="badge-security" x="806.0" y="386.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="823.0" y="398.0" text-anchor="middle">IAM</text>
-    <text class="label text-security" x="848.0" y="400.0">IAM Role</text>
-    <text class="sublabel text-security" x="808.0" y="422.0">instance role</text>
+    <rect class="node fill-security implied" x="1006.0" y="230.0" width="168.0" height="56.0" rx="10"/>
+    <rect class="badge-security" x="1018.0" y="242.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="1035.0" y="254.0" text-anchor="middle">IAM</text>
+    <text class="label text-security" x="1060.0" y="256.0">IAM Role</text>
+    <text class="sublabel text-security" x="1020.0" y="278.0">instance role</text>
   </g>
-  <g><title>description=Master credentials for the managed database</title>
-    <rect class="node fill-security implied" x="794.0" y="446.0" width="168.0" height="56.0" rx="10"/>
-    <rect class="badge-security" x="806.0" y="458.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="823.0" y="470.0" text-anchor="middle">SEC</text>
-    <text class="label text-security" x="848.0" y="472.0">Secrets Manager</text>
-    <text class="sublabel text-security" x="808.0" y="494.0">db secret</text>
+  <g><title>purpose=database; ingress_from=app_sg</title>
+    <rect class="node fill-security implied" x="1006.0" y="302.0" width="168.0" height="56.0" rx="10"/>
+    <rect class="badge-security" x="1018.0" y="314.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="1035.0" y="326.0" text-anchor="middle">SG</text>
+    <text class="label text-security" x="1060.0" y="328.0">Security Group</text>
+    <text class="sublabel text-security" x="1020.0" y="350.0">db sg</text>
   </g>
-  <g><title>CloudWatch</title>
-    <rect class="node fill-ops implied" x="794.0" y="518.0" width="168.0" height="56.0" rx="10"/>
-    <rect class="badge-ops" x="806.0" y="530.0" width="34" height="17" rx="4"/>
-    <text class="badge" x="823.0" y="542.0" text-anchor="middle">CW</text>
-    <text class="label text-ops" x="848.0" y="544.0">CloudWatch</text>
-    <text class="sublabel text-ops" x="808.0" y="566.0">monitoring</text>
+  <g><title>purpose=cache; ingress_from=app_sg</title>
+    <rect class="node fill-security implied" x="1006.0" y="374.0" width="168.0" height="56.0" rx="10"/>
+    <rect class="badge-security" x="1018.0" y="386.0" width="34" height="17" rx="4"/>
+    <text class="badge" x="1035.0" y="398.0" text-anchor="middle">SG</text>
+    <text class="label text-security" x="1060.0" y="400.0">Security Group</text>
+    <text class="sublabel text-security" x="1020.0" y="422.0">cache sg</text>
   </g>
 </svg>

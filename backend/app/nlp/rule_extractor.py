@@ -21,11 +21,17 @@ import re
 from app.models.ir import InfrastructureSpec, Kind, Origin, Resource, slugify
 from app.nlp.base import Extractor
 from app.nlp.catalog import (
+    AUTOSCALING_TRIGGERS,
     DB_ENGINES,
+    DEFAULT_OS,
     ENVIRONMENT_CANONICAL,
     ENVIRONMENTS,
     LEXICON,
     LEXICON_TOKENS,
+    LOAD_BALANCER_TRIGGERS,
+    OPERATING_SYSTEMS,
+    PRIVATE_PLACEMENT_MARKERS,
+    PROTOCOL_PORTS,
     REGION_ALIASES,
     service_for,
 )
@@ -106,6 +112,9 @@ class RuleExtractor(Extractor):
         spec.region = self._region(text, spec)
         spec.environment = self._environment(text)
         spec.high_availability = self._high_availability(text)
+        spec.private_placement_requested = any(
+            marker in text for marker in PRIVATE_PLACEMENT_MARKERS
+        )
         spec.availability_zones = self._availability_zones(text, spec.high_availability)
         spec.name = self._project_name(raw, spec.environment)
 
@@ -144,17 +153,102 @@ class RuleExtractor(Extractor):
                         tier=info.tier,
                         origin=Origin.EXPLICIT,
                         count=count,
-                        confidence=round(min(1.0, 0.6 + 0.05 * len(phrase.split())), 2),
+                        # Longer, more specific phrases are stronger evidence
+                        # than a bare acronym.
+                        confidence=round(min(0.99, 0.80 + 0.05 * len(phrase.split())), 2),
                         evidence=evidence,
+                        reason=f"The requirement names {phrase!r}.",
                     )
                     spec.add(resource)
                     seen_kinds[entry.kind] = resource
 
         self._merge_compute(text, spec, seen_kinds)
+        self._apply_triggers(text, spec, seen_kinds)
         self._attach_properties(text, spec)
         self._flag_ambiguity(text, spec, seen_kinds)
         spec.summary = self._summary(spec)
         return spec
+
+    # -- trigger phrases ---------------------------------------------------
+
+    def _apply_triggers(
+        self, text: str, spec: InfrastructureSpec, seen: dict[Kind, Resource]
+    ) -> None:
+        """Add the two services the resource rules allow to be inferred.
+
+        A load balancer and a scaling group may appear without being named,
+        but only for the specific phrases below -- "high availability",
+        "auto scaling", "web tier", or more than one instance. Everything else
+        in the design must be named outright. Each addition records the phrase
+        that caused it, so an unwanted one is traceable to the words that
+        produced it rather than to a hidden heuristic.
+        """
+        vm = seen.get(Kind.VM)
+        multiple_instances = vm is not None and vm.count > 1
+
+        def matched(triggers: tuple[str, ...]) -> str | None:
+            for phrase in triggers:
+                if phrase in text:
+                    return phrase
+            return None
+
+        # ECS and EKS scale through their own schedulers, so "highly available"
+        # must not also bolt an EC2 scaling group onto a container platform.
+        managed_platform = (
+            Kind.CONTAINER_SERVICE in seen or Kind.KUBERNETES_CLUSTER in seen
+        )
+
+        # -- auto scaling group ------------------------------------------
+        if Kind.AUTOSCALING_GROUP not in seen and not managed_platform:
+            phrase = matched(AUTOSCALING_TRIGGERS)
+            if phrase:
+                self._add_triggered(
+                    spec, seen, Kind.AUTOSCALING_GROUP, "app_asg",
+                    f"The requirement asks for {phrase!r}, which needs a scaling group.",
+                    phrase,
+                )
+
+        # -- load balancer -----------------------------------------------
+        if Kind.LOAD_BALANCER not in seen:
+            phrase = matched(LOAD_BALANCER_TRIGGERS)
+            if phrase:
+                self._add_triggered(
+                    spec, seen, Kind.LOAD_BALANCER, "alb",
+                    f"The requirement asks for {phrase!r}, which needs traffic "
+                    "spread across instances.",
+                    phrase,
+                )
+            elif multiple_instances:
+                self._add_triggered(
+                    spec, seen, Kind.LOAD_BALANCER, "alb",
+                    f"{vm.count} instances were requested, so traffic has to be "
+                    "distributed between them.",
+                    f"{vm.count} instances",
+                )
+
+    @staticmethod
+    def _add_triggered(
+        spec: InfrastructureSpec,
+        seen: dict[Kind, Resource],
+        kind: Kind,
+        resource_id: str,
+        reason: str,
+        evidence: str,
+    ) -> None:
+        info = service_for(kind)
+        resource = Resource(
+            id=resource_id,
+            kind=kind,
+            name=info.display,
+            tier=info.tier,
+            origin=Origin.EXPLICIT,
+            confidence=0.75,  # inferred from intent, not named outright
+            evidence=evidence,
+            reason=reason,
+        )
+        spec.add(resource)
+        seen[kind] = resource
+        spec.note(f"{resource.name}: {reason}")
 
     # -- attribute helpers -------------------------------------------------
 
@@ -242,9 +336,22 @@ class RuleExtractor(Extractor):
         encrypted = any(m in text for m in ENCRYPTION_MARKERS)
         backups = any(m in text for m in BACKUP_MARKERS)
         public = any(m in text for m in PUBLIC_MARKERS)
+        operating_system = self._operating_system(text)
+        stated_ports = self._stated_ports(text)
 
         for resource in spec.resources:
             props = resource.properties
+
+            if resource.kind is Kind.SECURITY_GROUP and stated_ports:
+                props["ingress_ports"] = stated_ports
+                props["ports_from_prompt"] = True
+
+            if resource.kind in (Kind.VM, Kind.AUTOSCALING_GROUP, Kind.BASTION):
+                name, ami_filter, owner, ssh_user = operating_system
+                props["os"] = name
+                props["ami_name_filter"] = ami_filter
+                props["ami_owner"] = owner
+                props["ssh_user"] = ssh_user
 
             if resource.kind in (Kind.VM, Kind.AUTOSCALING_GROUP, Kind.BASTION):
                 props["instance_type"] = (
@@ -308,6 +415,37 @@ class RuleExtractor(Extractor):
 
             if encrypted:
                 props.setdefault("encryption_requested", True)
+
+    @staticmethod
+    def _operating_system(text: str) -> tuple[str, str, str, str]:
+        """Match the requested OS to an AMI lookup, defaulting to Amazon Linux."""
+        for name, ami_filter, owner, ssh_user in OPERATING_SYSTEMS:
+            if name in text:
+                return name, ami_filter, owner, ssh_user
+        return DEFAULT_OS
+
+    @staticmethod
+    def _stated_ports(text: str) -> list[int]:
+        """Ports the user actually named, by number or by protocol.
+
+        "allowing SSH and HTTP" has to produce 22 and 80 rather than a
+        plausible default, because a firewall rule the user did not ask for is
+        the kind of guess that gets noticed in production.
+        """
+        ports: list[int] = []
+        for match in re.finditer(r"\bports?\s+((?:\d{1,5})(?:\s*(?:,|and|&)\s*\d{1,5})*)",
+                                 text):
+            for number in re.findall(r"\d{1,5}", match.group(1)):
+                value = int(number)
+                if 1 <= value <= 65535:
+                    ports.append(value)
+
+        for word, port in PROTOCOL_PORTS:
+            if re.search(r"(?<![a-z0-9])" + re.escape(word) + r"(?![a-z0-9])", text):
+                ports.append(port)
+
+        # Preserve first-mention order, drop duplicates.
+        return list(dict.fromkeys(ports))
 
     @staticmethod
     def _db_engine(text: str) -> tuple[str, str]:
