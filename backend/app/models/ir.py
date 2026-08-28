@@ -60,8 +60,11 @@ class Kind(str, Enum):
     CONTAINER_REGISTRY = "container_registry"
     BASTION = "bastion"
     # --- traffic --------------------------------------------------------
-    LOAD_BALANCER = "load_balancer"
+    LOAD_BALANCER = "load_balancer"            # application, layer 7
+    NETWORK_LOAD_BALANCER = "network_load_balancer"  # layer 4
+    GATEWAY_LOAD_BALANCER = "gateway_load_balancer"  # layer 3, appliance fleet
     TARGET_GROUP = "target_group"
+    CERTIFICATE = "certificate"
     API_GATEWAY = "api_gateway"
     CDN = "cdn"
     DNS_ZONE = "dns_zone"
@@ -180,6 +183,14 @@ class InfrastructureSpec(BaseModel):
 
     name: str = "generated-infrastructure"
     provider: Provider = Provider.AWS
+    unsupported_provider: str | None = Field(
+        None,
+        description=(
+            "Set when the requirement names a cloud this system cannot "
+            "generate for. Generation stops rather than substituting AWS "
+            "resources, which the user would not discover until apply."
+        ),
+    )
     region: str = "us-east-1"
     environment: str = "dev"
     prompt: str = ""

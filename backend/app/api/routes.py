@@ -16,6 +16,7 @@ from app.api.schemas import (
 from app.config import get_settings
 from app.engine.pipeline import Pipeline
 from app.export.bundle import build_zip
+from app.nlp.catalog import PROVIDER_DISPLAY
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -101,6 +102,20 @@ def generate(request: GenerateRequest) -> GenerateResponse:
     except Exception as exc:  # pragma: no cover - unexpected generator failure
         logger.exception("Generation failed")
         raise HTTPException(status_code=500, detail=f"Generation failed: {exc}") from exc
+
+    if result.spec.unsupported_provider is not None:
+        display = PROVIDER_DISPLAY.get(
+            result.spec.unsupported_provider, result.spec.unsupported_provider
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"{display} is not supported. This generator produces AWS "
+                "Terraform only. Nothing was generated, because substituting "
+                "AWS services for the ones you asked for would not be "
+                "discovered until you ran terraform apply."
+            ),
+        )
 
     if not result.spec.resources:
         raise HTTPException(

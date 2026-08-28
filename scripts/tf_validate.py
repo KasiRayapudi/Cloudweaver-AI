@@ -65,6 +65,15 @@ CORPUS: dict[str, str] = {
     "monitoring-only": "An EC2 instance with CloudWatch monitoring and an SNS topic.",
     "data-warehouse": "A Redshift data warehouse in private subnets with an S3 bucket.",
     "windows": "A Windows Server 2022 EC2 instance with RDP access and an Elastic IP.",
+    "https-alb": (
+        "An application load balancer with HTTPS and an ACM certificate in "
+        "front of an auto scaling group of web servers."
+    ),
+    "network-lb": (
+        "A network load balancer with TLS termination on port 443 in front of "
+        "two web servers."
+    ),
+    "gateway-lb": "A gateway load balancer for a firewall appliance fleet in private subnets.",
 }
 
 BOOTSTRAP_VERSIONS = """terraform {

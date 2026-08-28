@@ -64,6 +64,14 @@ class SpecValidator:
 
     def validate(self, spec: InfrastructureSpec) -> list[Finding]:
         findings: list[Finding] = []
+        if spec.unsupported_provider is not None:
+            return [Finding(
+                "error", "unsupported_provider",
+                f"{spec.unsupported_provider} was requested. This generator "
+                "produces AWS Terraform only; no resources were generated "
+                "rather than substituting AWS services for the ones you asked "
+                "for.",
+            )]
         findings += self._structural(spec)
         findings += self._network(spec)
         findings += self._security(spec)

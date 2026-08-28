@@ -81,6 +81,18 @@ AWS_CATALOG: dict[Kind, ServiceInfo] = {
         Kind.LOAD_BALANCER, "Application Load Balancer", "aws_lb",
         Tier.PUBLIC, "traffic", "ALB",
     ),
+    Kind.NETWORK_LOAD_BALANCER: ServiceInfo(
+        Kind.NETWORK_LOAD_BALANCER, "Network Load Balancer", "aws_lb",
+        Tier.PUBLIC, "traffic", "NLB",
+    ),
+    Kind.GATEWAY_LOAD_BALANCER: ServiceInfo(
+        Kind.GATEWAY_LOAD_BALANCER, "Gateway Load Balancer", "aws_lb",
+        Tier.PUBLIC, "traffic", "GWLB",
+    ),
+    Kind.CERTIFICATE: ServiceInfo(
+        Kind.CERTIFICATE, "ACM Certificate", "aws_acm_certificate",
+        Tier.EDGE, "security", "TLS",
+    ),
     Kind.TARGET_GROUP: ServiceInfo(
         Kind.TARGET_GROUP, "Target Group", "aws_lb_target_group", Tier.PUBLIC, "traffic", "TG"
     ),
@@ -206,10 +218,22 @@ LEXICON: tuple[LexEntry, ...] = (
     LexEntry(Kind.INTERNET_GATEWAY,
              ("internet gateway", "igw"),
              "internet_gateway"),
+    LexEntry(Kind.NETWORK_LOAD_BALANCER,
+             ("network load balancer", "layer 4 load balancer", "l4 load balancer",
+              "tcp load balancer", "nlb"),
+             "nlb"),
+    LexEntry(Kind.GATEWAY_LOAD_BALANCER,
+             ("gateway load balancer", "gwlb", "appliance load balancer"),
+             "gwlb"),
     LexEntry(Kind.LOAD_BALANCER,
-             ("application load balancer", "network load balancer", "load balancer",
-              "load-balancer", "elb", "alb", "nlb", "load balancing", "load balanced"),
+             ("application load balancer", "layer 7 load balancer", "l7 load balancer",
+              "http load balancer", "load balancer", "load-balancer", "elb", "alb",
+              "load balancing", "load balanced"),
              "alb"),
+    LexEntry(Kind.CERTIFICATE,
+             ("acm certificate", "tls certificate", "ssl certificate",
+              "certificate manager", "acm"),
+             "certificate"),
     LexEntry(Kind.AUTOSCALING_GROUP,
              ("auto scaling group", "autoscaling group", "auto-scaling", "autoscaling",
               "auto scaling", "scale automatically", "scales automatically",
@@ -395,6 +419,12 @@ CLAUSE_BOUNDARIES: tuple[str, ...] = (
     " initially ", " to start ", " just ", " only ", " instead ",
 )
 
+# Asking for any of these means the listener terminates TLS.
+TLS_MARKERS: tuple[str, ...] = (
+    "https", "tls", "ssl", "certificate", "acm", "encrypted in transit",
+    "encryption in transit", "port 443", "secure connection", "secure traffic",
+)
+
 # Phrases that mean the workload should sit in private subnets.
 PRIVATE_PLACEMENT_MARKERS: tuple[str, ...] = (
     "private subnet", "private subnets", "in private", "privately",
@@ -405,6 +435,42 @@ PRIVATE_PLACEMENT_MARKERS: tuple[str, ...] = (
 # ("3 servers") apart from a digit that is part of a product name ("Route 53").
 LEXICON_TOKENS: frozenset[str] = frozenset(
     word for entry in LEXICON for phrase in entry.phrases for word in phrase.split()
+)
+
+# Phrases that name a cloud other than AWS. Only this catalog is implemented,
+# so the honest response is to say so rather than to emit AWS resources for an
+# Azure request -- the user would not discover the substitution until apply.
+PROVIDER_MARKERS: dict[str, tuple[str, ...]] = {
+    "azure": (
+        "azure", "microsoft azure", "azure vm", "azure virtual machine",
+        "resource group", "storage account", "cosmos db", "cosmosdb",
+        "azure functions", "aks", "azure kubernetes", "app service",
+        "blob container", "azure sql", "vnet", "virtual network gateway",
+    ),
+    "gcp": (
+        "gcp", "google cloud", "google cloud platform", "compute engine",
+        "cloud run", "cloud functions", "bigquery", "gke",
+        "google kubernetes engine", "cloud spanner", "cloud storage bucket",
+        "firestore", "pub/sub", "cloud sql",
+    ),
+    "oci": ("oracle cloud", "oci ", "oracle cloud infrastructure"),
+    "alibaba": ("alibaba cloud", "aliyun"),
+    "ibm": ("ibm cloud",),
+}
+
+PROVIDER_DISPLAY: dict[str, str] = {
+    "azure": "Microsoft Azure",
+    "gcp": "Google Cloud Platform",
+    "oci": "Oracle Cloud Infrastructure",
+    "alibaba": "Alibaba Cloud",
+    "ibm": "IBM Cloud",
+}
+
+# Phrases that confirm AWS, used to break a tie when a prompt names both --
+# "migrate from Azure to AWS" is an AWS request.
+AWS_MARKERS: tuple[str, ...] = (
+    "aws", "amazon web services", "ec2", "s3", "rds", "lambda", "vpc",
+    "cloudfront", "route 53", "dynamodb", "eks", "ecs", "elasticache",
 )
 
 # Regions the extractor recognises, keyed by how people usually write them.

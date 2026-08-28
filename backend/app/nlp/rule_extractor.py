@@ -30,6 +30,7 @@ from app.models.ir import (
 from app.nlp.base import Extractor
 from app.nlp.catalog import (
     AUTOSCALING_TRIGGERS,
+    AWS_MARKERS,
     CLAUSE_BOUNDARIES,
     DB_ENGINES,
     DEFAULT_OS,
@@ -48,7 +49,10 @@ from app.nlp.catalog import (
     POSTFIX_WINDOW,
     PRIVATE_PLACEMENT_MARKERS,
     PROTOCOL_PORTS,
+    PROVIDER_DISPLAY,
+    PROVIDER_MARKERS,
     REGION_ALIASES,
+    TLS_MARKERS,
     service_for,
 )
 
@@ -131,6 +135,17 @@ class RuleExtractor(Extractor):
             spec.warn("Empty requirement: nothing to extract.")
             return spec
 
+        spec.unsupported_provider = self._unsupported_provider(text)
+        if spec.unsupported_provider is not None:
+            display = PROVIDER_DISPLAY[spec.unsupported_provider]
+            spec.warn(
+                f"{display} is not supported. This generator produces AWS "
+                "Terraform only, so no infrastructure was generated rather "
+                "than silently substituting AWS services."
+            )
+            spec.summary = f"{display} requested; no AWS equivalent was generated."
+            return spec
+
         spec.region = self._region(text, spec)
         spec.environment = self._environment(text)
         spec.high_availability = self._high_availability(text)
@@ -199,6 +214,28 @@ class RuleExtractor(Extractor):
         self._flag_ambiguity(text, spec, seen_kinds)
         spec.summary = self._summary(spec)
         return spec
+
+    # -- provider ----------------------------------------------------------
+
+    @staticmethod
+    def _unsupported_provider(text: str) -> str | None:
+        """Name the non-AWS cloud this requirement asks for, if any.
+
+        A prompt naming AWS as well wins the tie: "migrate from Azure to AWS"
+        is an AWS request that happens to mention Azure.
+        """
+        if any(
+            re.search(r"(?<![a-z0-9])" + re.escape(marker) + r"(?![a-z0-9])", text)
+            for marker in AWS_MARKERS
+        ):
+            return None
+        for provider, markers in PROVIDER_MARKERS.items():
+            for marker in markers:
+                if re.search(
+                    r"(?<![a-z0-9])" + re.escape(marker.strip()) + r"(?![a-z0-9])", text
+                ):
+                    return provider
+        return None
 
     # -- refusals ----------------------------------------------------------
 
@@ -299,7 +336,16 @@ class RuleExtractor(Extractor):
                 )
 
         # -- load balancer -----------------------------------------------
-        if Kind.LOAD_BALANCER not in seen and not spec.is_excluded(Kind.LOAD_BALANCER):
+        # Any balancer already satisfies the intent. Inferring an application
+        # load balancer alongside a network one the user explicitly asked for
+        # would give them two.
+        any_balancer = any(
+            k in seen for k in (
+                Kind.LOAD_BALANCER, Kind.NETWORK_LOAD_BALANCER,
+                Kind.GATEWAY_LOAD_BALANCER,
+            )
+        )
+        if not any_balancer and not spec.is_excluded(Kind.LOAD_BALANCER):
             phrase = matched(LOAD_BALANCER_TRIGGERS)
             if phrase:
                 self._add_triggered(
@@ -435,6 +481,7 @@ class RuleExtractor(Extractor):
         backups = any(m in text for m in BACKUP_MARKERS)
         public = any(m in text for m in PUBLIC_MARKERS)
         operating_system = self._operating_system(text)
+        tls = any(marker in text for marker in TLS_MARKERS)
         stated_ports = self._stated_ports(text)
 
         for resource in spec.resources:
@@ -503,10 +550,18 @@ class RuleExtractor(Extractor):
                 props["encrypted"] = True
                 props["public_read"] = "static website" in text or "static site" in text
 
-            if resource.kind == Kind.LOAD_BALANCER:
+            if resource.kind in (Kind.LOAD_BALANCER, Kind.NETWORK_LOAD_BALANCER,
+                                 Kind.GATEWAY_LOAD_BALANCER):
                 props["internal"] = not public and "internal" in text
-                props["listener_port"] = int(port.group(1)) if port else 80
                 props["scheme"] = "internal" if props["internal"] else "internet-facing"
+                if resource.kind is not Kind.GATEWAY_LOAD_BALANCER:
+                    props["https"] = tls
+                    stated = int(port.group(1)) if port else None
+                    # A stated 443 is the TLS port, not the plain one.
+                    props["listener_port"] = (
+                        stated if stated and stated != 443 else 80
+                    )
+                    props["tls_port"] = 443
 
             if resource.kind == Kind.CACHE:
                 props["node_type"] = "cache.t3.micro"

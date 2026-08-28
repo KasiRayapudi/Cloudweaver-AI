@@ -248,6 +248,13 @@ class TerraformGenerator:
                 {"type": Raw("string"), "default": "public.ecr.aws/nginx/nginx:latest"}
             )
 
+        if spec.has(Kind.CERTIFICATE) and not spec.has(Kind.DNS_ZONE):
+            # A DNS zone declares this variable itself; declaring it twice
+            # would be a duplicate definition.
+            f.variable("domain_name", "Domain the certificate is issued for.").set_all(
+                {"type": Raw("string"), "default": "example.com"}
+            )
+
         f.variable("tags", "Extra tags merged into every resource.").set_all(
             {"type": Raw("map(string)"), "default": {}}
         )
@@ -972,49 +979,82 @@ class TerraformGenerator:
     def _edge(self, spec: InfrastructureSpec) -> HclFile:
         f = HclFile("Traffic entry points: load balancing, API, CDN and DNS.")
         public = spec.first(Kind.SUBNET_PUBLIC)
+        private = spec.first(Kind.SUBNET_PRIVATE)
         vpc = spec.first(Kind.VPC)
 
-        lb = spec.first(Kind.LOAD_BALANCER)
-        if lb is not None:
-            b = f.resource("aws_lb", _name(lb))
-            b.set("name", _capped("alb"))
-            b.set("load_balancer_type", "application")
-            b.set("internal", bool(lb.properties.get("internal", False)))
-            if spec.get("alb_sg") is not None:
+        # The three balancer types differ in more than a type string: the
+        # listener protocol, the health check shape, the target group protocol
+        # and whether a security group attaches all follow from the choice.
+        balancers = spec.of_kind(
+            Kind.LOAD_BALANCER, Kind.NETWORK_LOAD_BALANCER, Kind.GATEWAY_LOAD_BALANCER
+        )
+        lb = spec.first(Kind.LOAD_BALANCER) or spec.first(Kind.NETWORK_LOAD_BALANCER)
+
+        certificate = spec.first(Kind.CERTIFICATE)
+        if certificate is not None:
+            cert = f.resource(
+                "aws_acm_certificate", _name(certificate),
+                "DNS validation records must be published before this completes.",
+            )
+            cert.set("domain_name", var("domain_name"))
+            cert.set("validation_method", "DNS")
+            cert.set("tags", _tags())
+            lifecycle = cert.block("lifecycle")
+            lifecycle.set("create_before_destroy", True)
+
+        for balancer in balancers:
+            tf_kind = {
+                Kind.LOAD_BALANCER: "application",
+                Kind.NETWORK_LOAD_BALANCER: "network",
+                Kind.GATEWAY_LOAD_BALANCER: "gateway",
+            }[balancer.kind]
+            suffix = {"application": "alb", "network": "nlb", "gateway": "gwlb"}[tf_kind]
+
+            b = f.resource("aws_lb", _name(balancer))
+            b.set("name", _capped(suffix))
+            b.set("load_balancer_type", tf_kind)
+            # A gateway load balancer is always internal; only an application
+            # load balancer takes a security group.
+            b.set("internal", True if tf_kind == "gateway"
+                  else bool(balancer.properties.get("internal", False)))
+            if tf_kind == "application" and spec.get("alb_sg") is not None:
                 b.set("security_groups", [ref("aws_security_group", "alb_sg", "id")])
-            if public is not None:
+            if tf_kind == "gateway" and private is not None:
+                b.set("subnets", Raw(f"aws_subnet.{_name(private)}[*].id"))
+            elif tf_kind != "gateway" and public is not None:
                 b.set("subnets", Raw(f"aws_subnet.{_name(public)}[*].id"))
             b.set("enable_deletion_protection", spec.environment == "prod")
-            b.set("enable_http2", True)
-            b.set("idle_timeout", 60)
-            b.set("tags", _tags(("Name", "${local.name_prefix}-alb")))
+            if tf_kind == "application":
+                b.set("enable_http2", True)
+                b.set("idle_timeout", 60)
+            elif tf_kind == "network":
+                b.set("enable_cross_zone_load_balancing", True)
+            b.set("tags", _tags(("Name", f"${{local.name_prefix}}-{suffix}")))
 
         tg = spec.first(Kind.TARGET_GROUP)
+        # A target group is valid on its own; only the listeners need a
+        # balancer to attach to.
         if tg is not None and vpc is not None:
+            protocol = str(tg.properties.get("protocol", "HTTP"))
             b = f.resource("aws_lb_target_group", _name(tg))
             b.set("name", _capped("tg"))
             b.set("port", tg.properties.get("port", 80))
-            b.set("protocol", "HTTP")
+            b.set("protocol", protocol)
             b.set("vpc_id", ref("aws_vpc", _name(vpc), "id"))
             b.set("target_type", "ip" if spec.has(Kind.CONTAINER_SERVICE) else "instance")
             hc = b.block("health_check")
             hc.set("enabled", True)
-            hc.set("path", tg.properties.get("health_check_path", "/health"))
+            if protocol in ("HTTP", "HTTPS"):
+                # Only a layer 7 health check has a path or a status matcher.
+                hc.set("path", tg.properties.get("health_check_path", "/health"))
+                hc.set("matcher", "200-399")
             hc.set("healthy_threshold", 2)
             hc.set("unhealthy_threshold", 3)
-            hc.set("timeout", 5)
             hc.set("interval", 30)
-            hc.set("matcher", "200-399")
             b.set("tags", _tags())
 
             if lb is not None:
-                listener = f.resource("aws_lb_listener", "http")
-                listener.set("load_balancer_arn", ref("aws_lb", _name(lb), "arn"))
-                listener.set("port", lb.properties.get("listener_port", 80))
-                listener.set("protocol", "HTTP")
-                action = listener.block("default_action")
-                action.set("type", "forward")
-                action.set("target_group_arn", ref("aws_lb_target_group", _name(tg), "arn"))
+                self._listeners(f, spec, lb, tg, certificate)
 
         api = spec.first(Kind.API_GATEWAY)
         if api is not None:
@@ -1167,6 +1207,54 @@ class TerraformGenerator:
             b.set("tags", _tags())
 
         return f
+
+    @staticmethod
+    def _listeners(
+        f: HclFile,
+        spec: InfrastructureSpec,
+        lb: Resource,
+        tg: Resource,
+        certificate: Resource | None,
+    ) -> None:
+        """Listeners for the balancer, including TLS termination.
+
+        When HTTPS is asked for the plain HTTP listener is not dropped: it is
+        turned into a permanent redirect. Removing it would silently break
+        every existing http:// link, which is not what "add HTTPS" means.
+        """
+        network = lb.kind is Kind.NETWORK_LOAD_BALANCER
+        https = bool(lb.properties.get("https")) and certificate is not None
+
+        if https:
+            secure = f.resource("aws_lb_listener", "https")
+            secure.set("load_balancer_arn", ref("aws_lb", _name(lb), "arn"))
+            secure.set("port", lb.properties.get("tls_port", 443))
+            secure.set("protocol", "TLS" if network else "HTTPS")
+            secure.set("ssl_policy", "ELBSecurityPolicy-TLS13-1-2-2021-06")
+            secure.set("certificate_arn",
+                       ref("aws_acm_certificate", _name(certificate), "arn"))
+            action = secure.block("default_action")
+            action.set("type", "forward")
+            action.set("target_group_arn", ref("aws_lb_target_group", _name(tg), "arn"))
+
+        plain = f.resource(
+            "aws_lb_listener", "http",
+            "Redirects to HTTPS rather than being removed, so existing "
+            "http:// links keep working." if https else None,
+        )
+        plain.set("load_balancer_arn", ref("aws_lb", _name(lb), "arn"))
+        plain.set("port", lb.properties.get("listener_port", 80))
+        plain.set("protocol", "TCP" if network else "HTTP")
+        action = plain.block("default_action")
+        if https and not network:
+            action.set("type", "redirect")
+            redirect = action.block("redirect")
+            redirect.set("port", "443")
+            redirect.set("protocol", "HTTPS")
+            redirect.set("status_code", "HTTP_301")
+        else:
+            action.set("type", "forward")
+            action.set("target_group_arn", ref("aws_lb_target_group", _name(tg), "arn"))
 
     # ------------------------------------------------------------------
     # integration

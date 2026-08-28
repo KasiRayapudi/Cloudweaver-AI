@@ -105,6 +105,19 @@ CDN_ORIGINS: frozenset[Kind] = frozenset({
 })
 
 
+def tls_requested(spec: InfrastructureSpec) -> bool:
+    """True when a listener needs a certificate to exist.
+
+    An HTTPS listener requires a certificate ARN, so once the user asks for
+    HTTPS the certificate stops being a nice-to-have and becomes a mandatory
+    dependency -- the listener cannot be created without one.
+    """
+    return any(
+        r.properties.get("https")
+        for r in spec.of_kind(Kind.LOAD_BALANCER, Kind.NETWORK_LOAD_BALANCER)
+    )
+
+
 def cdn_has_no_origin(spec: InfrastructureSpec) -> bool:
     """True when a CloudFront distribution would have nothing to serve.
 
@@ -235,8 +248,36 @@ REQUIREMENTS: dict[Kind, tuple[Requirement, ...]] = {
                     "An internet-facing load balancer needs public subnets."),
         Requirement(Kind.SECURITY_GROUP, "The load balancer requires a security group.",
                     id_hint="alb_sg", properties={"purpose": "load-balancer"}),
-        Requirement(Kind.TARGET_GROUP, "A load balancer listener must forward to a target group."),
+        Requirement(Kind.TARGET_GROUP,
+                    "A load balancer listener must forward to a target group."),
+        Requirement(
+            Kind.CERTIFICATE,
+            "An HTTPS listener cannot be created without a certificate.",
+            when=tls_requested,
+        ),
     ),
+    Kind.NETWORK_LOAD_BALANCER: (
+        Requirement(Kind.VPC, "A network load balancer must live in a VPC."),
+        Requirement(Kind.SUBNET_PUBLIC,
+                    "An internet-facing network load balancer needs public subnets."),
+        Requirement(Kind.TARGET_GROUP,
+                    "A load balancer listener must forward to a target group.",
+                    properties={"protocol": "TCP"}),
+        Requirement(
+            Kind.CERTIFICATE,
+            "A TLS listener cannot be created without a certificate.",
+            when=tls_requested,
+        ),
+    ),
+    Kind.GATEWAY_LOAD_BALANCER: (
+        Requirement(Kind.VPC, "A gateway load balancer must live in a VPC."),
+        Requirement(Kind.SUBNET_PRIVATE,
+                    "Gateway load balancers front an appliance fleet in private subnets."),
+        Requirement(Kind.TARGET_GROUP,
+                    "The appliance fleet is registered through a target group.",
+                    properties={"protocol": "GENEVE"}),
+    ),
+    Kind.CERTIFICATE: (),
     Kind.TARGET_GROUP: (
         Requirement(Kind.VPC, "A target group is scoped to a VPC."),
     ),
@@ -316,6 +357,7 @@ REQUIREMENTS: dict[Kind, tuple[Requirement, ...]] = {
 NON_DEPENDENCIES: dict[Kind, tuple[tuple[Kind, str], ...]] = {
     Kind.VM: (
         (Kind.LOAD_BALANCER, "A single instance does not need a load balancer."),
+        (Kind.CERTIFICATE, "TLS termination was not requested."),
         (Kind.AUTOSCALING_GROUP, "Scaling was not requested."),
         (Kind.MONITORING, "Alarms are a recommendation, not a deployment requirement."),
         (Kind.ELASTIC_IP, "An instance in a public subnet already gets a public IP."),
