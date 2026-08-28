@@ -192,13 +192,13 @@ backend/
   app/
     models/ir.py            the shared representation
     nlp/                    catalog + lexicon, rule and LLM extractors
-    engine/                 mapper, validator, pipeline
+    engine/                 policy, mapper, validator, pipeline
     generators/terraform/   HCL writer + project generator
     generators/diagram/     layout engine, SVG renderer, Mermaid export
     api/                    FastAPI routes and schemas
     export/bundle.py        zip / on-disk packaging
   cli.py
-  tests/                    121 tests
+  tests/                    367 tests
 frontend/                   dependency-free single page UI
 ```
 

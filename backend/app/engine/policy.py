@@ -99,6 +99,22 @@ PRIVATE_EGRESS_CONSUMERS: frozenset[Kind] = frozenset({
     Kind.KUBERNETES_CLUSTER, Kind.BASTION,
 })
 
+#: Anything CloudFront can point at.
+CDN_ORIGINS: frozenset[Kind] = frozenset({
+    Kind.OBJECT_STORAGE, Kind.LOAD_BALANCER, Kind.API_GATEWAY,
+})
+
+
+def cdn_has_no_origin(spec: InfrastructureSpec) -> bool:
+    """True when a CloudFront distribution would have nothing to serve.
+
+    ``aws_cloudfront_distribution`` requires an ``origin`` block with a
+    ``domain_name``; without one the generated Terraform does not plan. An
+    origin is therefore a mandatory dependency rather than a recommendation,
+    and a bucket is the only origin that can be created from nothing.
+    """
+    return spec.has(Kind.CDN) and not any(spec.has(k) for k in CDN_ORIGINS)
+
 
 # --------------------------------------------------------------------------
 # mandatory dependencies
@@ -225,7 +241,14 @@ REQUIREMENTS: dict[Kind, tuple[Requirement, ...]] = {
         Requirement(Kind.VPC, "A target group is scoped to a VPC."),
     ),
     Kind.API_GATEWAY: (),
-    Kind.CDN: (),
+    Kind.CDN: (
+        Requirement(
+            Kind.OBJECT_STORAGE,
+            "A CloudFront distribution cannot be created without an origin, "
+            "so a bucket was added for it to serve.",
+            when=cdn_has_no_origin,
+        ),
+    ),
     Kind.DNS_ZONE: (),
     Kind.WAF: (),
 

@@ -36,6 +36,9 @@ Rules:
 - Use `count` for repetition ("three web servers" -> count 3).
 - Prefer the most specific kind available. A "Kubernetes cluster" is
   kubernetes_cluster, not vm.
+- Do NOT add anything because it is good practice. A resource the user did
+  not ask for is a defect, even if a production system would want it. A later
+  stage raises those as advisory findings instead.
 - If the description is not about cloud infrastructure at all, return no
   resources and say so in `summary`.
 
@@ -59,6 +62,14 @@ def _tool_schema() -> dict:
                     "enum": ["dev", "test", "qa", "staging", "prod", "sandbox"],
                 },
                 "high_availability": {"type": "boolean"},
+                "private_placement_requested": {
+                    "type": "boolean",
+                    "description": (
+                        "True only if the user asked for private subnets or "
+                        "said the workload must not be publicly reachable. "
+                        "This decides whether a NAT gateway is created."
+                    ),
+                },
                 "availability_zones": {"type": "integer", "minimum": 1, "maximum": 6},
                 "summary": {"type": "string", "description": "One sentence describing the design."},
                 "assumptions": {"type": "array", "items": {"type": "string"}},
@@ -83,10 +94,30 @@ def _tool_schema() -> dict:
                             },
                             "evidence": {
                                 "type": "string",
-                                "description": "The phrase from the user text that implied this.",
+                                "description": (
+                                    "The exact phrase from the user's text that "
+                                    "asked for this resource, quoted verbatim."
+                                ),
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": (
+                                    "One sentence saying why this resource is in "
+                                    "the design, referring to what the user asked for."
+                                ),
+                            },
+                            "confidence": {
+                                "type": "number",
+                                "minimum": 0.0,
+                                "maximum": 1.0,
+                                "description": (
+                                    "How certain you are that the user asked for "
+                                    "this. Use a low value when you are inferring "
+                                    "rather than reading it directly."
+                                ),
                             },
                         },
-                        "required": ["id", "kind"],
+                        "required": ["id", "kind", "evidence", "reason", "confidence"],
                     },
                 },
             },
@@ -159,6 +190,9 @@ class LLMExtractor(Extractor):
             region=str(payload.get("region") or "us-east-1"),
             environment=str(payload.get("environment") or "dev"),
             high_availability=bool(payload.get("high_availability", False)),
+            private_placement_requested=bool(
+                payload.get("private_placement_requested", False)
+            ),
             availability_zones=int(payload.get("availability_zones") or 2),
             summary=str(payload.get("summary") or ""),
         )
@@ -175,6 +209,22 @@ class LLMExtractor(Extractor):
             props = item.get("properties") or {}
             if not isinstance(props, dict):
                 props = {}
+
+            evidence = str(item.get("evidence") or "").strip() or None
+            reason = str(item.get("reason") or "").strip()
+            if not reason:
+                # Tracing is not optional: a resource with no recorded reason
+                # cannot be audited, so fall back rather than leave it blank.
+                reason = (
+                    f"The model read {evidence!r} as a request for this."
+                    if evidence
+                    else "The model identified this from the description."
+                )
+            try:
+                confidence = float(item.get("confidence", 0.85))
+            except (TypeError, ValueError):
+                confidence = 0.85
+
             spec.add(
                 Resource(
                     id=slugify(str(item.get("id") or kind.value)),
@@ -184,8 +234,9 @@ class LLMExtractor(Extractor):
                     origin=Origin.EXPLICIT,
                     count=max(1, min(100, int(item.get("count") or 1))),
                     properties=props,
-                    confidence=0.9,
-                    evidence=str(item.get("evidence") or "") or None,
+                    confidence=max(0.0, min(1.0, confidence)),
+                    evidence=evidence,
+                    reason=reason,
                 )
             )
 

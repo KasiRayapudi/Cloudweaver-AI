@@ -31,9 +31,46 @@ Three rules keep it honest:
    the prompt. This is what makes diagram/code consistency structural rather
    than something to be maintained by hand.
 
-`Resource.origin` records whether each item was `explicit` (the user asked),
-`implied` (something else required it) or `default` (baseline policy), which is
-what the UI shades differently and what `spec.assumptions` explains in prose.
+`Resource.origin` has exactly two values, and that is a deliberate constraint
+rather than an omission: `explicit` (the user asked) and `implied` (a mandatory
+dependency). There is no `default` or `recommended` origin, because there is no
+code path that can produce one.
+
+## The policy engine
+
+`app/engine/policy.py` holds the entire ruleset as data:
+
+- **`REQUIREMENTS`** maps each `Kind` to its mandatory dependencies. Each
+  `Requirement` carries a `reason` shown to the user, an optional `when`
+  condition, and an optional `id_hint`.
+- **`NON_DEPENDENCIES`** records services a human architect might reasonably
+  pair with a resource — a load balancer for an instance, a cache for a
+  database — so that the decision *not* to generate them is written down and
+  testable rather than an accident of control flow.
+
+`ResourceMapper` is a fixed-point loop over that table. It adds mandatory
+dependencies until the set stops growing, and it contains no per-service
+knowledge, so a new service is an edit to the policy rather than a new branch
+in the engine. This is what makes "never invent a resource" a property of the
+system instead of a promise about its behaviour.
+
+`id_hint` is the mechanism behind per-consumer resources. Without it, a design
+gets one security group and one IAM role in total: a database would share the
+application's firewall, and an ECS task would inherit the EC2 instance role —
+which produced a dangling `aws_iam_role.task_role` reference in the generated
+Terraform. With it, existence is checked by id, so each consumer gets exactly
+one of its own and never two.
+
+Two conditions carry most of the weight:
+
+- `wants_private_placement` reads *stated intent*, not "a private subnet
+  exists". A database creates private subnets for itself; if that counted as
+  intent it would pull the public web server in with it, which would in turn
+  make a NAT gateway look mandatory. One true fact would cascade into three
+  wrong resources.
+- `has_private_compute` runs during closure, *before* subnet placement has been
+  recorded on each resource, so it reads intent rather than the `subnet_band`
+  property that does not exist yet.
 
 ## Why a rule extractor at all
 
@@ -48,7 +85,7 @@ particular problem:
 The rule extractor fixes all three. It is longest-match phrase extraction over
 a curated lexicon with span consumption, plus attribute regexes for counts,
 instance sizes, engines, regions and environments. Its output is the oracle the
-mapper, generators and 121 tests are written against. The LLM path is the
+mapper, generators and 367 tests are written against. The LLM path is the
 quality upgrade for phrasing the lexicon does not cover, constrained by a tool
 schema so it can only speak the same vocabulary.
 
@@ -90,6 +127,20 @@ them — plus the same check for `var.*`. That catches the real failure mode of 
 generator (emitting a reference to something it forgot to create) in
 milliseconds, offline. Running `terraform validate` against the output remains
 worthwhile as a manual step; it is not a prerequisite for developing on this.
+
+`test_coverage.py` adds the two checks that matter most for a generator built
+around a shared model, run for all 34 kinds:
+
+- **Forward** — every resource in the model must emit its catalog
+  `terraform_type`. A resource the diagram draws and the code never creates is
+  the exact drift this project exists to prevent. This check found four: route
+  tables, Elastic IPs, Redshift (in the catalog, priced in the cost estimate,
+  drawn on the diagram, and never generated at all) and monitoring.
+- **Reverse** — every emitted `resource` block must map back to the model or to
+  a declared allowlist of implementation details (subnet groups, listeners,
+  policy attachments, generated passwords). This found an SNS alerts topic that
+  appeared in the Terraform whenever monitoring was requested but existed
+  nowhere in the model.
 
 ## Extending it
 

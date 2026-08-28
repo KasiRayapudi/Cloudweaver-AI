@@ -300,6 +300,9 @@ class TerraformGenerator:
         f = HclFile("Networking: VPC, subnets, gateways and routing.")
         vpc = spec.first(Kind.VPC)
         if vpc is None:
+            # An Elastic IP is a regional resource and does not need a VPC, so
+            # it still has to be emitted when there is nothing else to build.
+            self._elastic_ip(f, spec)
             return f
 
         b = f.resource("aws_vpc", _name(vpc))
@@ -347,11 +350,21 @@ class TerraformGenerator:
             b.set("vpc_id", vpc_id)
             b.set("tags", _tags(("Name", "${local.name_prefix}-igw")))
 
+        # Route tables follow the IR, not the gateway. A route table in the
+        # spec that emitted no HCL would be a resource the diagram shows and
+        # the code does not create.
+        public_rt = next(
+            (r for r in spec.of_kind(Kind.ROUTE_TABLE)
+             if r.properties.get("scope") != "private"),
+            None,
+        )
+        if public_rt is not None:
             rt = f.resource("aws_route_table", "public")
             rt.set("vpc_id", vpc_id)
-            route = rt.block("route")
-            route.set("cidr_block", "0.0.0.0/0")
-            route.set("gateway_id", ref("aws_internet_gateway", _name(igw), "id"))
+            if igw is not None:
+                route = rt.block("route")
+                route.set("cidr_block", "0.0.0.0/0")
+                route.set("gateway_id", ref("aws_internet_gateway", _name(igw), "id"))
             rt.set("tags", _tags(("Name", "${local.name_prefix}-public-rt")))
 
             if public is not None:
@@ -405,18 +418,27 @@ class TerraformGenerator:
             assoc.set("subnet_id", Raw(f"aws_subnet.{_name(private)}[count.index].id"))
             assoc.set("route_table_id", Raw("aws_route_table.private[count.index].id"))
 
-        # A standalone Elastic IP: the user asked for a fixed public address on
-        # an instance, which is not the same thing as a NAT gateway's address.
-        if eip is not None and nat_eip is None:
-            target = spec.get(str(eip.properties.get("attached_to", "")))
-            e = f.resource("aws_eip", _name(eip),
-                           "Static public address for the instance.")
-            e.set("domain", "vpc")
-            if target is not None and target.kind is Kind.VM:
-                e.set("instance", ref("aws_instance", _name(target), "id"))
-            e.set("tags", _tags(("Name", "${local.name_prefix}-eip")))
+        if nat_eip is None:
+            self._elastic_ip(f, spec)
 
         return f
+
+    @staticmethod
+    def _elastic_ip(f: HclFile, spec: InfrastructureSpec) -> None:
+        """A standalone Elastic IP.
+
+        Not the same thing as a NAT gateway's address: this is a fixed public
+        address the user asked to put on an instance.
+        """
+        eip = spec.first(Kind.ELASTIC_IP)
+        if eip is None:
+            return
+        target = spec.get(str(eip.properties.get("attached_to", "")))
+        e = f.resource("aws_eip", _name(eip), "Static public address.")
+        e.set("domain", "vpc")
+        if target is not None and target.kind is Kind.VM:
+            e.set("instance", ref("aws_instance", _name(target), "id"))
+        e.set("tags", _tags(("Name", "${local.name_prefix}-eip")))
 
     # ------------------------------------------------------------------
     # security groups
@@ -808,6 +830,39 @@ class TerraformGenerator:
             rid = f.resource("random_id", "bucket_suffix",
                              "S3 bucket names are globally unique; add a stable suffix.")
             rid.set("byte_length", 4)
+
+        warehouse = spec.first(Kind.DATA_WAREHOUSE)
+        if warehouse is not None:
+            if private is not None:
+                sn = f.resource("aws_redshift_subnet_group", "main")
+                sn.set("name", _prefixed("redshift-subnets"))
+                sn.set("subnet_ids", Raw(f"aws_subnet.{_name(private)}[*].id"))
+                sn.set("tags", _tags())
+
+            pw = f.resource("random_password", "redshift")
+            pw.set("length", 32)
+            pw.set("special", False)
+
+            b = f.resource("aws_redshift_cluster", _name(warehouse))
+            b.set("cluster_identifier", _prefixed("warehouse"))
+            b.set("database_name", warehouse.properties.get("database_name", "analytics"))
+            b.set("master_username", "rsadmin")
+            b.set("master_password", Raw("random_password.redshift.result"))
+            b.set("node_type", warehouse.properties.get("node_type", "ra3.xlplus"))
+            nodes = int(warehouse.properties.get("nodes", 1))
+            b.set("cluster_type", "multi-node" if nodes > 1 else "single-node")
+            if nodes > 1:
+                b.set("number_of_nodes", nodes)
+            if private is not None:
+                b.set("cluster_subnet_group_name",
+                      ref("aws_redshift_subnet_group", "main", "name"))
+            if spec.get("warehouse_sg") is not None:
+                b.set("vpc_security_group_ids",
+                      [ref("aws_security_group", "warehouse_sg", "id")])
+            b.set("encrypted", True)
+            b.set("publicly_accessible", False)
+            b.set("skip_final_snapshot", spec.environment != "prod")
+            b.set("tags", _tags(("Name", "${local.name_prefix}-warehouse")))
 
         efs = spec.first(Kind.FILE_STORAGE)
         if efs is not None:
@@ -1246,16 +1301,27 @@ class TerraformGenerator:
         if not spec.has(Kind.MONITORING):
             return f
 
+        asg = spec.first(Kind.AUTOSCALING_GROUP)
+        db = spec.first(Kind.SQL_DATABASE)
+        instance = spec.first(Kind.VM)
+        if asg is None and db is None and instance is None:
+            # Nothing to alarm on. Emitting an alert topic here would put a
+            # resource in the Terraform that appears nowhere in the shared
+            # model, which is exactly the drift this project exists to avoid.
+            return f
+
         topic = spec.first(Kind.TOPIC)
         if topic is None:
-            alarm_topic = f.resource("aws_sns_topic", "alerts")
+            alarm_topic = f.resource(
+                "aws_sns_topic", "alerts",
+                "Delivery target for the alarms below.",
+            )
             alarm_topic.set("name", _prefixed("alerts"))
             alarm_topic.set("tags", _tags())
             topic_ref = ref("aws_sns_topic", "alerts", "arn")
         else:
             topic_ref = ref("aws_sns_topic", _name(topic), "arn")
 
-        asg = spec.first(Kind.AUTOSCALING_GROUP)
         if asg is not None:
             a = f.resource("aws_cloudwatch_metric_alarm", "high_cpu")
             a.set("alarm_name", _prefixed("high-cpu"))
@@ -1273,7 +1339,24 @@ class TerraformGenerator:
             })
             a.set("tags", _tags())
 
-        db = spec.first(Kind.SQL_DATABASE)
+        if asg is None and instance is not None:
+            a = f.resource("aws_cloudwatch_metric_alarm", "instance_cpu")
+            a.set("alarm_name", _prefixed("instance-high-cpu"))
+            a.set("comparison_operator", "GreaterThanThreshold")
+            a.set("evaluation_periods", 2)
+            a.set("metric_name", "CPUUtilization")
+            a.set("namespace", "AWS/EC2")
+            a.set("period", 300)
+            a.set("statistic", "Average")
+            a.set("threshold", 80)
+            a.set("alarm_description", "Average CPU above 80% for 10 minutes")
+            a.set("alarm_actions", [topic_ref])
+            index = "[0]" if instance.count > 1 else ""
+            a.set("dimensions", {
+                "InstanceId": Raw(f"aws_instance.{_name(instance)}{index}.id")
+            })
+            a.set("tags", _tags())
+
         if db is not None:
             a = f.resource("aws_cloudwatch_metric_alarm", "db_storage")
             a.set("alarm_name", _prefixed("db-low-storage"))

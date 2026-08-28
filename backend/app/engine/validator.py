@@ -121,6 +121,17 @@ class SpecValidator:
                 ))
             seen_cidrs[str(cidr)] = r.name
 
+        # Alarms with nothing to watch produce an empty monitoring stack.
+        if spec.has(Kind.MONITORING) and not spec.of_kind(
+            Kind.AUTOSCALING_GROUP, Kind.SQL_DATABASE, Kind.VM
+        ):
+            out.append(Finding(
+                "warning", "monitoring_no_targets",
+                "Monitoring was requested but there is no compute or database "
+                "to raise alarms on.",
+                spec.first(Kind.MONITORING).id,
+            ))
+
         # Terraform will not converge on a dependency cycle.
         for cycle in spec.find_cycles():
             out.append(Finding(

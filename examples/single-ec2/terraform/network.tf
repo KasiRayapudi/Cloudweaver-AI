@@ -38,7 +38,7 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
-# Static public address for the instance.
+# Static public address.
 resource "aws_eip" "eip" {
   domain   = "vpc"
   instance = aws_instance.app_server.id
