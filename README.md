@@ -44,8 +44,11 @@ HCL are the same set of things, always.
 ## Quick start
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
+
+(`requirements.txt` holds runtime dependencies only — it is what the deployed
+function installs. `requirements-dev.txt` adds the test and lint tooling.)
 
 Run the web app:
 
@@ -152,6 +155,39 @@ structurally instead — balanced delimiters, and every `aws_*.name` reference
 resolving to a resource the project actually declares, which is the failure
 mode a code generator really has. `test_diagram.py` additionally asserts that
 the diagram and the Terraform describe the same resource set.
+
+## Deploying to Vercel
+
+`vercel.json` and `api/index.py` are already set up. Import the repository at
+[vercel.com/new](https://vercel.com/new) and deploy — no build settings to
+change, no framework preset to pick.
+
+How the request routing works:
+
+| Path | Served by |
+|---|---|
+| `/api/*`, `/docs`, `/openapi.json` | the Python function (`api/index.py`) |
+| `/static/*`, everything else | Vercel's CDN, straight from `frontend/` |
+
+The function re-exports the same FastAPI app that `uvicorn` runs locally, so
+there is no separate deployment code path to keep in sync. Static assets never
+wake a function.
+
+To enable the LLM extractor on the deployment, add two environment variables in
+the Vercel project settings and redeploy:
+
+```
+ANTHROPIC_API_KEY = sk-ant-...
+EXTRACTOR         = llm
+```
+
+`anthropic` is not in `requirements.txt`, so add it there too if you enable
+this — otherwise the deployment stays on the rule extractor and says so in the
+response, which is the intended fallback.
+
+**One caveat worth knowing.** Serverless functions are stateless and time
+limited. This app suits that well: generation is pure CPU, takes ~10 ms, and
+holds nothing between requests. Expect a ~1 s cold start on the first hit.
 
 ## Current scope and limits
 

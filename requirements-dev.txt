@@ -1,0 +1,12 @@
+# Everything in requirements.txt, plus the tooling needed to develop and test.
+-r requirements.txt
+
+# Reload, websockets and the faster event loop for local development.
+uvicorn[standard]==0.34.0
+
+pytest==8.3.4
+httpx==0.28.1
+ruff==0.8.6
+
+# Optional: enables the LLM extractor (EXTRACTOR=llm).
+anthropic==0.42.0

@@ -1,0 +1,9 @@
+# Keep the serverless bundle small: none of this is needed at runtime.
+backend/tests/
+examples/
+docs/
+.ruff_cache/
+.pytest_cache/
+__pycache__/
+*.pyc
+generated/

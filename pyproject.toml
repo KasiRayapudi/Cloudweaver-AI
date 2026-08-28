@@ -33,8 +33,11 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-# str+Enum is deliberate: it keeps the IR JSON-serialisable without custom encoders.
-ignore = ["UP042"]
+# UP042: str+Enum is deliberate, it keeps the IR JSON-serialisable without
+#        custom encoders.
+# UP038: the isinstance tuple form is faster than X | Y and the rule was
+#        deprecated upstream.
+ignore = ["UP042", "UP038"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "tests"]
