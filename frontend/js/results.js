@@ -7,6 +7,7 @@
  */
 
 import { createDiagramViewer } from "./diagram.js";
+import { renderCost } from "./cost-view.js";
 import { renderTerraform } from "./terraform-view.js";
 import { clear, copyText, downloadText, el, formatCurrency, icon, toast } from "./ui.js";
 import { store } from "./store.js";
@@ -669,77 +670,6 @@ function renderTrace(result) {
 /* ==================================================================
    Cost
    ================================================================== */
-function renderCost(result) {
-  const total = result.summary.estimated_monthly_cost_usd;
-  const byResource = result.spec.resources
-    .map((resource) => ({
-      name: resource.name,
-      id: resource.id,
-      kind: resource.kind,
-      count: resource.count,
-      cost: estimateFor(resource),
-    }))
-    .filter((row) => row.cost > 0)
-    .sort((a, b) => b.cost - a.cost);
-
-  const max = byResource[0]?.cost || 1;
-
-  return el("div", { class: "stack" }, [
-    el("div", { class: "stat-row" }, [
-      statCard("Monthly estimate", formatCurrency(total), "on-demand, before data transfer"),
-      statCard("Annualised", formatCurrency(total * 12), "same rate, twelve months"),
-      statCard("Priced resources", byResource.length,
-        `${result.spec.resources.length - byResource.length} carry no standing charge`),
-    ]),
-
-    el("div", { class: "callout callout--info" }, [
-      icon("info"),
-      el("div", {}, [
-        el("strong", { text: "These are order-of-magnitude figures" }),
-        el("p", { text: "Static per-service rates, not live pricing. Use them to compare designs, not to forecast a bill." }),
-      ]),
-    ]),
-
-    byResource.length > 0 && el("section", { class: "panel" }, [
-      el("div", { class: "panel__header" }, [
-        icon("chart", 15),
-        el("span", { class: "panel__title", text: "Cost by resource" }),
-      ]),
-      el("div", { class: "panel__body stack stack--tight" },
-        byResource.map((row) =>
-          el("div", { class: "cost-row" }, [
-            el("span", { class: "cost-row__name" }, [
-              el("span", { class: `resource-row__dot cat-${categoryOf(row.kind)}` }),
-              el("span", { text: row.name }),
-              row.count > 1 && el("span", { class: "badge badge--neutral", text: `×${row.count}` }),
-            ]),
-            el("span", { class: "cost-row__bar" }, [
-              el("span", {
-                class: `cost-row__fill cat-bg-${categoryOf(row.kind)}`,
-                style: { width: `${Math.max(3, (row.cost / max) * 100)}%` },
-              }),
-            ]),
-            el("span", { class: "cost-row__value tabular", text: formatCurrency(row.cost) }),
-          ]),
-        ),
-      ),
-    ]),
-  ]);
-}
-
-/** Mirrors the backend's static hints so the breakdown sums to its total. */
-const COST_HINTS = {
-  vm: 8, autoscaling_group: 24, nat_gateway: 33, load_balancer: 18,
-  network_load_balancer: 18, gateway_load_balancer: 18,
-  sql_database: 25, sql_cluster: 90, cache: 13, kubernetes_cluster: 73,
-  container_service: 15, object_storage: 1, cdn: 5, function: 1,
-  nosql_table: 2, data_warehouse: 180,
-};
-
-function estimateFor(resource) {
-  return (COST_HINTS[resource.kind] || 0) * (resource.count || 1);
-}
-
 /* ==================================================================
    Dependencies
    ================================================================== */

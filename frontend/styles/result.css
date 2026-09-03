@@ -958,3 +958,140 @@
   .code-sidebar { max-height: none; }
   .block-list { max-height: 200px; overflow-y: auto; }
 }
+
+/* ==================================================================
+   Cost dashboard
+   ================================================================== */
+.price-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(176px, 1fr));
+  gap: var(--space-3);
+}
+
+.price-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+.price-card__label {
+  font-size: var(--text-2xs);
+  font-weight: 620;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+.price-card__value {
+  font-size: var(--text-2xl);
+  font-weight: 680;
+  line-height: 1.12;
+  letter-spacing: -0.022em;
+}
+.price-card__hint { font-size: var(--text-xs); color: var(--fg-subtle); }
+
+/* The monthly figure is the one people quote, so it carries the accent. */
+.price-card--primary {
+  background:
+    linear-gradient(180deg, var(--bg-brand-subtle), transparent 68%),
+    var(--bg-surface);
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border-default));
+}
+.price-card--primary .price-card__value { color: var(--fg-brand); }
+
+/* ---- donut ---- */
+.cost-split {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: center;
+}
+
+.cost-split__chart { position: relative; display: grid; place-items: center; }
+
+.donut { display: block; }
+.donut__seg {
+  transition: opacity var(--duration-fast) var(--ease-out);
+  transform-origin: center;
+}
+.donut:hover .donut__seg { opacity: 0.55; }
+.donut .donut__seg:hover { opacity: 1; }
+
+.donut__centre {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  pointer-events: none;
+}
+.donut__total {
+  display: block;
+  font-size: var(--text-lg);
+  font-weight: 680;
+  letter-spacing: -0.02em;
+}
+.donut__caption {
+  display: block;
+  font-size: var(--text-2xs);
+  color: var(--fg-faint);
+}
+
+/* Category colours reused from the diagram palette, so a family reads the
+   same colour in the chart, the legend and the resource list. */
+.cat-fill-compute { fill: var(--cat-compute); }
+.cat-fill-traffic { fill: var(--cat-traffic); }
+.cat-fill-data { fill: var(--cat-data); }
+.cat-fill-storage { fill: var(--cat-storage); }
+.cat-fill-security { fill: var(--cat-security); }
+.cat-fill-network { fill: var(--cat-network); }
+.cat-fill-integration { fill: var(--cat-integration); }
+.cat-fill-ops { fill: var(--cat-ops); }
+
+.cat-stroke-compute { stroke: var(--cat-compute); }
+.cat-stroke-traffic { stroke: var(--cat-traffic); }
+.cat-stroke-data { stroke: var(--cat-data); }
+.cat-stroke-storage { stroke: var(--cat-storage); }
+.cat-stroke-security { stroke: var(--cat-security); }
+.cat-stroke-network { stroke: var(--cat-network); }
+.cat-stroke-integration { stroke: var(--cat-integration); }
+.cat-stroke-ops { stroke: var(--cat-ops); }
+
+/* ---- legend ---- */
+.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+
+.legend__row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-sm);
+}
+.legend__row:last-child { border-bottom: none; }
+
+.legend__swatch { width: 10px; height: 10px; border-radius: 3px; }
+.legend__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend__share {
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+  min-width: 34px;
+  text-align: right;
+}
+.legend__value {
+  font-size: var(--text-xs);
+  font-weight: 560;
+  min-width: 64px;
+  text-align: right;
+}
+
+.cost-row--top .cost-row__value { font-weight: 640; color: var(--fg-default); }
+
+@media (max-width: 720px) {
+  .cost-split { grid-template-columns: minmax(0, 1fr); justify-items: center; }
+  .legend { width: 100%; }
+}
