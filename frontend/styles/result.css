@@ -1469,3 +1469,79 @@
   font-size: var(--text-sm);
   color: var(--fg-faint);
 }
+
+/* ==================================================================
+   Inspector: explanation content
+   ================================================================== */
+.inspector__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.rule-cite {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-xs);
+}
+.rule-cite__label {
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.rule-cite code {
+  font-size: var(--text-2xs);
+  color: var(--fg-brand);
+  overflow-wrap: anywhere;
+}
+
+.dep-block + .dep-block { margin-top: var(--space-3); }
+.dep-block .dep-label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-2xs);
+  color: var(--fg-faint);
+}
+
+.note {
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+  color: var(--fg-muted);
+}
+
+.note-list {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+.note-list li { margin-bottom: var(--space-1); }
+
+/* Alternatives are a comparison, not a list of names: the service is the
+   heading and the trade-off is the body. */
+.alt-list { list-style: none; margin: 0; padding: 0; }
+.alt-list li {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.alt-list li:last-child { border-bottom: none; }
+.alt-list strong {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 620;
+  color: var(--fg-default);
+}
+.alt-list p {
+  margin-top: 2px;
+  font-size: var(--text-xs);
+  color: var(--fg-subtle);
+  line-height: var(--leading-snug);
+}

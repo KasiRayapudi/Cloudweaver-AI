@@ -132,7 +132,10 @@ class ResourceMapper:
                         self._merge_properties(spec, requirement)
                         dependency = self._resolve(spec, requirement)
                     else:
-                        dependency = self._create(spec, requirement, because=resource)
+                        dependency = self._create(
+                            spec, requirement, because=resource,
+                            rule=requirement.rule_id(resource.kind),
+                        )
                         added = True
                     # Record the real creation-order constraint, so the
                     # dependency graph reflects the policy rather than being
@@ -149,7 +152,11 @@ class ResourceMapper:
         )
 
     def _create(
-        self, spec: InfrastructureSpec, requirement: Requirement, because: Resource
+        self,
+        spec: InfrastructureSpec,
+        requirement: Requirement,
+        because: Resource,
+        rule: str | None = None,
     ) -> Resource:
         info = service_for(requirement.kind, spec.provider)
         resource_id = requirement.id_hint or CANONICAL_IDS.get(
@@ -165,6 +172,8 @@ class ResourceMapper:
             properties=dict(requirement.properties),
             confidence=1.0,
             reason=requirement.reason.format(name=because.name),
+            rule=rule,
+            triggered_by=because.id,
         )
         spec.resources.append(resource)
         spec.note(f"{resource.name}: {resource.reason}")

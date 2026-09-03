@@ -49,6 +49,19 @@ class Requirement:
     #: single security group, and an ECS task would inherit the EC2 role.
     id_hint: str | None = None
 
+    def rule_id(self, owner: Kind) -> str:
+        """Stable name for this rule, for citation in an explanation.
+
+        Derived rather than stored so it cannot drift from the table: the
+        owning kind and the required kind together identify the entry, and
+        the id hint disambiguates the several security groups one design
+        legitimately needs.
+        """
+        parts = ["policy", owner.value, "requires", self.kind.value]
+        if self.id_hint:
+            parts.append(self.id_hint)
+        return ".".join(parts)
+
     def applies(self, spec: InfrastructureSpec) -> bool:
         return self.when is None or self.when(spec)
 

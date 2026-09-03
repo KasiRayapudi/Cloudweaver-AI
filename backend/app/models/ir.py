@@ -140,6 +140,22 @@ class Resource(BaseModel):
             "dependency that made it mandatory. Never empty in a generated spec."
         ),
     )
+    rule: str | None = Field(
+        None,
+        description=(
+            "Identifier of the policy rule that created this resource, e.g. "
+            "'policy.vm.requires.vpc'. Set only for mandatory dependencies; a "
+            "resource the user named has no rule behind it."
+        ),
+    )
+    triggered_by: str | None = Field(
+        None,
+        description=(
+            "Id of the resource whose requirements caused this one to be "
+            "created. Together with `rule` this answers 'why is this here?' "
+            "without re-deriving anything."
+        ),
+    )
     external_id: str | None = Field(
         None,
         description=(

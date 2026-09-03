@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 
 from app.config import Settings, get_settings
 from app.engine.emission import audit as audit_emission
+from app.engine.explain import Explainer, Explanation
 from app.engine.mapper import ResourceMapper
 from app.engine.optimizer import Optimizer, Recommendation, summarise
 from app.engine.validator import Finding, SpecValidator, estimate_monthly_cost
@@ -37,6 +38,7 @@ class GenerationResult:
     terraform: dict[str, str]
     findings: list[Finding] = field(default_factory=list)
     recommendations: list[Recommendation] = field(default_factory=list)
+    explanations: list[Explanation] = field(default_factory=list)
     estimated_monthly_cost: float = 0.0
     duration_ms: float = 0.0
 
@@ -48,6 +50,7 @@ class GenerationResult:
             "findings": [f.to_dict() for f in self.findings],
             "recommendations": [r.to_dict() for r in self.recommendations],
             "optimization": summarise(self.recommendations),
+            "explanations": [e.to_dict() for e in self.explanations],
             "dependency_graph": {
                 "edges": self.spec.dependency_graph(),
                 "creation_order": self.spec.creation_order(),
@@ -102,6 +105,7 @@ class Pipeline:
         self.mapper = ResourceMapper()
         self.validator = SpecValidator()
         self.optimizer = Optimizer()
+        self.explainer = Explainer()
         self.terraform = TerraformGenerator()
         self.layout = LayoutEngine()
         self.svg = SvgRenderer()
@@ -165,6 +169,13 @@ class Pipeline:
             for severity, code, message in audit_emission(spec, terraform)
         ]
 
+        # Stage 5c: explanation. A pure view over everything above -- it adds
+        # no resource and changes no property, so it runs last and can see
+        # the findings and recommendations that reference each resource.
+        explanations = self.explainer.explain_all(
+            spec, terraform, findings, recommendations,
+        )
+
         return GenerationResult(
             spec=spec,
             diagram_svg=svg,
@@ -172,6 +183,7 @@ class Pipeline:
             terraform=terraform,
             findings=findings,
             recommendations=recommendations,
+            explanations=explanations,
             estimated_monthly_cost=estimate_monthly_cost(spec),
             duration_ms=(time.perf_counter() - started) * 1000,
         )

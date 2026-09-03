@@ -7,6 +7,7 @@
  */
 
 import { createDiagramViewer } from "./diagram.js";
+import { categoryOf, renderInspector, renderInspectorEmpty } from "./inspector.js";
 import { renderCost } from "./cost-view.js";
 import { renderOptimize } from "./optimize-view.js";
 import { renderValidation } from "./validation-view.js";
@@ -343,7 +344,7 @@ function renderResources(result, ctx) {
 
   function show(resource) {
     ctx.state.selected = resource.id;
-    clear(inspector).append(renderInspector(resource, result));
+    clear(inspector).append(renderInspector(resource, result, { onSelectResource: show }));
     for (const row of list.querySelectorAll(".resource-row")) {
       row.setAttribute("aria-current", String(row.dataset.id === resource.id));
     }
@@ -412,143 +413,12 @@ function renderResources(result, ctx) {
   ]);
 
   paint();
-  clear(inspector).append(
-    el("div", { class: "state" }, [
-      el("div", { class: "state__icon" }, [icon("layers", 20)]),
-      el("div", { class: "state__title", text: "Select a resource" }),
-      el("p", { class: "state__message", text: "See why it exists, what depends on it, and its Terraform." }),
-    ]),
-  );
+  clear(inspector).append(renderInspectorEmpty());
 
   return el("div", { class: "stack" }, [
     filters,
     el("div", { class: "split" }, [list, inspector]),
   ]);
-}
-
-function renderInspector(resource, result) {
-  const trace = result.extraction.find((entry) => entry.id === resource.id);
-  const graph = result.dependency_graph.edges || {};
-  const dependsOn = graph[resource.id] || [];
-  const dependents = Object.entries(graph)
-    .filter(([, parents]) => parents.includes(resource.id))
-    .map(([id]) => id);
-  const findings = result.findings.filter((f) => f.resource_id === resource.id);
-  const snippet = terraformSnippet(result.terraform, resource);
-
-  return el("div", { class: "inspector__inner" }, [
-    el("header", { class: "inspector__head" }, [
-      el("span", { class: `resource-row__dot cat-${categoryOf(resource.kind)}` }),
-      el("div", {}, [
-        el("h3", { text: resource.name }),
-        el("span", { class: "inspector__kind mono", text: resource.kind }),
-      ]),
-    ]),
-
-    el("dl", { class: "kv" }, [
-      el("dt", { text: "Identifier" }),
-      el("dd", { class: "mono", text: resource.id }),
-      resource.display_name && el("dt", { text: "Name" }),
-      resource.display_name && el("dd", { class: "mono", text: resource.display_name }),
-      resource.external_id && el("dt", { text: "Existing id" }),
-      resource.external_id && el("dd", { class: "mono", text: resource.external_id }),
-      el("dt", { text: "Origin" }),
-      el("dd", {}, [
-        el("span", {
-          class: `badge ${resource.origin === "explicit" ? "badge--brand" : "badge--neutral"}`,
-          text: resource.origin === "explicit" ? "Requested" : "Mandatory dependency",
-        }),
-      ]),
-      el("dt", { text: "Confidence" }),
-      el("dd", {}, [confidenceBar(resource.confidence)]),
-      resource.count > 1 && el("dt", { text: "Count" }),
-      resource.count > 1 && el("dd", { class: "tabular", text: String(resource.count) }),
-    ]),
-
-    el("section", { class: "inspector__section" }, [
-      el("h4", { text: "Why it exists" }),
-      el("p", { class: "reason", text: resource.reason || "No reason recorded." }),
-      trace?.source && el("p", { class: "evidence" }, [
-        el("span", { text: "From your words: " }),
-        el("q", { text: trace.source }),
-      ]),
-    ]),
-
-    Object.keys(resource.properties || {}).length > 0 &&
-      el("section", { class: "inspector__section" }, [
-        el("h4", { text: "Configuration" }),
-        el("dl", { class: "kv kv--compact" },
-          Object.entries(resource.properties)
-            .filter(([, value]) => typeof value !== "object")
-            .flatMap(([key, value]) => [
-              el("dt", { class: "mono", text: key }),
-              el("dd", { class: "mono", text: String(value) }),
-            ]),
-        ),
-      ]),
-
-    (dependsOn.length > 0 || dependents.length > 0) &&
-      el("section", { class: "inspector__section" }, [
-        el("h4", { text: "Dependencies" }),
-        dependsOn.length > 0 && el("p", { class: "dep-line" }, [
-          el("span", { class: "dep-label", text: "Created after" }),
-          ...dependsOn.map((id) => el("code", { class: "dep-chip", text: id })),
-        ]),
-        dependents.length > 0 && el("p", { class: "dep-line" }, [
-          el("span", { class: "dep-label", text: "Required by" }),
-          ...dependents.map((id) => el("code", { class: "dep-chip", text: id })),
-        ]),
-      ]),
-
-    findings.length > 0 && el("section", { class: "inspector__section" }, [
-      el("h4", { text: "Findings" }),
-      ...findings.map((finding) => findingRow(finding, { compact: true })),
-    ]),
-
-    snippet && el("section", { class: "inspector__section" }, [
-      el("div", { class: "inspector__section-head" }, [
-        el("h4", { text: "Terraform" }),
-        el("button", {
-          class: "btn btn--ghost btn--sm",
-          onClick: () => copyText(snippet, "Snippet copied"),
-        }, [icon("copy", 13), el("span", { text: "Copy" })]),
-      ]),
-      el("pre", { class: "code code--boxed" }, [el("code", { text: snippet })]),
-    ]),
-  ]);
-}
-
-function confidenceBar(value = 1) {
-  const percent = Math.round(value * 100);
-  return el("span", { class: "confidence" }, [
-    el("span", { class: "confidence__track" }, [
-      el("span", { class: "confidence__fill", style: { width: `${percent}%` } }),
-    ]),
-    el("span", { class: "confidence__value tabular", text: `${percent}%` }),
-  ]);
-}
-
-/** Pull the block for one resource out of the generated files. */
-function terraformSnippet(files, resource) {
-  for (const content of Object.values(files)) {
-    const pattern = new RegExp(
-      `^(?:resource|data)\\s+"[\\w-]+"\\s+"${resource.id}"[\\s\\S]*?^\\}`, "m",
-    );
-    const match = content.match(pattern);
-    if (match) return match[0];
-  }
-  return null;
-}
-
-function categoryOf(kind) {
-  if (/vm|instance|autoscaling|container|kubernetes|function|bastion|registry/.test(kind)) return "compute";
-  if (/load_balancer|target_group|api_gateway|cdn|dns|certificate/.test(kind)) return "traffic";
-  if (/sql|nosql|cache|warehouse/.test(kind)) return "data";
-  if (/storage/.test(kind)) return "storage";
-  if (/security|iam|secret|key|waf/.test(kind)) return "security";
-  if (/queue|topic|event/.test(kind)) return "integration";
-  if (/monitoring/.test(kind)) return "ops";
-  return "network";
 }
 
 /* ==================================================================
@@ -572,7 +442,9 @@ function renderDiagram(result, ctx) {
             onClick: () => { drawer.hidden = true; },
           }, [icon("x", 14)]),
         ]),
-        renderInspector(resource, result),
+        renderInspector(resource, result, {
+          onSelectResource: (next) => viewer.highlight(next.id),
+        }),
       );
     },
   });

@@ -95,6 +95,35 @@ class OptimizationSummaryModel(BaseModel):
     additional_monthly_spend_usd: float
 
 
+class ExplanationModel(BaseModel):
+    """Everything deterministically known about one resource."""
+
+    resource_id: str
+    name: str
+    kind: str
+    requested: bool
+    origin: str
+    reason: str
+    rule: str | None = None
+    triggered_by: str | None = None
+    evidence: str | None = None
+    confidence: float
+    external_id: str | None = None
+    depends_on: list[str]
+    required_by: list[str]
+    monthly_cost_usd: float
+    terraform_snippet: str | None = None
+    terraform_file: str | None = None
+    pillar: str
+    security_notes: str | None = None
+    networking_notes: str | None = None
+    operational_notes: str | None = None
+    alternatives: list[dict[str, str]]
+    best_practices: list[str]
+    finding_codes: list[str]
+    recommendation_ids: list[str]
+
+
 class DependencyGraphModel(BaseModel):
     #: resource id -> ids it must be created after
     edges: dict[str, list[str]]
@@ -110,6 +139,7 @@ class GenerateResponse(BaseModel):
     findings: list[FindingModel]
     recommendations: list[RecommendationModel]
     optimization: OptimizationSummaryModel
+    explanations: list[ExplanationModel]
     dependency_graph: DependencyGraphModel
     extraction: list[ExtractionModel]
     exclusions: list[ExclusionModel]
