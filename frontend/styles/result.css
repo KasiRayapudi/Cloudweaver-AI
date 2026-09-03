@@ -792,3 +792,169 @@
   /* The map costs more screen than it earns on a phone. */
   .minimap { display: none; }
 }
+
+/* ==================================================================
+   Terraform syntax highlighting
+   ==================================================================
+   Every colour resolves to a token. The light values are too dark on
+   the dark surface, so three of them are restated for that theme
+   rather than compromising on one value that suits neither.
+   ================================================================== */
+.tok--keyword  { color: var(--violet-500); font-weight: 600; }
+.tok--string   { color: var(--green-600); }
+.tok--number   { color: var(--amber-600); }
+.tok--constant { color: var(--amber-600); font-weight: 500; }
+.tok--comment  { color: var(--fg-faint); font-style: italic; }
+.tok--function { color: var(--blue-500); }
+.tok--builtin  { color: var(--info); }
+.tok--attr     { color: var(--fg-default); }
+.tok--ident    { color: var(--fg-muted); }
+.tok--punct    { color: var(--fg-subtle); }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tok--keyword  { color: #c4b5fd; }
+  :root:not([data-theme="light"]) .tok--string   { color: #86efac; }
+  :root:not([data-theme="light"]) .tok--number,
+  :root:not([data-theme="light"]) .tok--constant { color: #fcd34d; }
+  :root:not([data-theme="light"]) .tok--function { color: #93c5fd; }
+}
+:root[data-theme="dark"] .tok--keyword  { color: #c4b5fd; }
+:root[data-theme="dark"] .tok--string   { color: #86efac; }
+:root[data-theme="dark"] .tok--number,
+:root[data-theme="dark"] .tok--constant { color: #fcd34d; }
+:root[data-theme="dark"] .tok--function { color: #93c5fd; }
+
+/* ==================================================================
+   Gutter with fold controls
+   ==================================================================
+   The gutter is no longer aria-hidden: it holds real buttons now, and
+   hiding a focusable element from assistive technology is a defect.
+   The numbers inside carry aria-hidden individually instead.
+   ================================================================== */
+.viewer__gutter-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 1.65em;
+}
+
+.viewer__fold {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  color: var(--fg-faint);
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+.viewer__fold:hover { background: var(--bg-active); color: var(--fg-default); }
+
+.viewer__fold-caret {
+  width: 0;
+  height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transition: rotate var(--duration-fast) var(--ease-out);
+  rotate: 90deg;
+}
+.viewer__fold[aria-expanded="false"] .viewer__fold-caret { rotate: 0deg; }
+
+.viewer__fold-spacer { width: 14px; flex: none; }
+
+.viewer__folded-hint {
+  color: var(--fg-faint);
+  font-style: italic;
+  opacity: 0.8;
+}
+
+.viewer__line.is-flash {
+  background: var(--bg-brand-subtle);
+  box-shadow: inset 2px 0 0 var(--accent);
+  border-radius: 2px;
+  animation: flash-fade 900ms var(--ease-out);
+}
+@keyframes flash-fade {
+  0%, 55% { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+  100%    { background: transparent; }
+}
+
+/* ==================================================================
+   Code sidebar: files above, blocks below
+   ================================================================== */
+.code-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  max-height: 70dvh;
+  overflow-y: auto;
+}
+
+.code-sidebar__label {
+  padding: 0 var(--space-2);
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+.code-sidebar__label:not(:first-child) { margin-top: var(--space-2); }
+
+.block-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+.block-list__empty {
+  padding: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--fg-faint);
+  text-align: center;
+}
+
+.block-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 26px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.block-item:hover { background: var(--bg-hover); }
+
+.block-item__kind {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--bg-subtle);
+  color: var(--fg-subtle);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+.kind--resource { background: var(--bg-brand-subtle); color: var(--fg-brand); }
+.kind--variable, .kind--locals { background: var(--info-bg); color: var(--info); }
+.kind--output { background: var(--success-bg); color: var(--success); }
+.kind--data { background: var(--warning-bg); color: var(--warning); }
+
+.block-item__name {
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.block-item__line { font-size: 10px; color: var(--fg-faint); }
+
+@media (max-width: 1100px) {
+  .code-sidebar { max-height: none; }
+  .block-list { max-height: 200px; overflow-y: auto; }
+}

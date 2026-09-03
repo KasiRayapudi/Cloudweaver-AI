@@ -7,6 +7,7 @@
  */
 
 import { createDiagramViewer } from "./diagram.js";
+import { renderTerraform } from "./terraform-view.js";
 import { clear, copyText, downloadText, el, formatCurrency, icon, toast } from "./ui.js";
 import { store } from "./store.js";
 
@@ -580,108 +581,6 @@ function renderDiagram(result, ctx) {
 /* ==================================================================
    Terraform viewer
    ================================================================== */
-const FILE_ORDER = [
-  "versions.tf", "variables.tf", "locals.tf", "network.tf", "security.tf",
-  "compute.tf", "data.tf", "edge.tf", "integration.tf", "iam.tf",
-  "monitoring.tf", "outputs.tf", "terraform.tfvars",
-];
-
-function renderTerraform(result) {
-  const names = Object.keys(result.terraform).sort((a, b) => {
-    const ia = FILE_ORDER.indexOf(a);
-    const ib = FILE_ORDER.indexOf(b);
-    if (ia !== -1 && ib !== -1) return ia - ib;
-    if (ia !== -1) return -1;
-    if (ib !== -1) return 1;
-    return a.localeCompare(b);
-  });
-
-  let active = names[0];
-  let query = "";
-
-  const fileList = el("ul", { class: "file-list", role: "tablist", "aria-label": "Generated files" });
-  const viewer = el("div", { class: "viewer" });
-  const meta = el("span", { class: "toolbar__meta" });
-
-  const search = el("input", {
-    class: "field field--inline",
-    type: "search",
-    placeholder: "Search in file…",
-    "aria-label": "Search within the file",
-  });
-  search.addEventListener("input", () => { query = search.value; paintViewer(); });
-
-  function paintList() {
-    clear(fileList);
-    for (const name of names) {
-      const lines = result.terraform[name].split("\n").length;
-      fileList.append(
-        el("li", {}, [
-          el("button", {
-            class: "file-item",
-            type: "button",
-            role: "tab",
-            "aria-selected": String(name === active),
-            onClick: () => { active = name; search.value = ""; query = ""; paintList(); paintViewer(); },
-          }, [
-            icon(name.endsWith(".tf") ? "code" : "book", 13),
-            el("span", { class: "file-item__name mono", text: name }),
-            el("span", { class: "file-item__lines tabular", text: String(lines) }),
-          ]),
-        ]),
-      );
-    }
-  }
-
-  function paintViewer() {
-    const content = result.terraform[active] || "";
-    const lines = content.split("\n");
-    const needle = query.trim().toLowerCase();
-    let hits = 0;
-
-    const gutter = el("div", { class: "viewer__gutter", "aria-hidden": "true" });
-    const code = el("div", { class: "viewer__code" });
-
-    lines.forEach((line, index) => {
-      const isHit = needle && line.toLowerCase().includes(needle);
-      if (isHit) hits += 1;
-      gutter.append(el("span", { class: "viewer__line-no", text: String(index + 1) }));
-      code.append(
-        el("span", {
-          class: `viewer__line${isHit ? " is-hit" : ""}`,
-          text: line || " ",
-        }),
-      );
-    });
-
-    meta.textContent = needle
-      ? `${hits} match${hits === 1 ? "" : "es"}`
-      : `${lines.length} lines`;
-
-    clear(viewer).append(gutter, code);
-  }
-
-  paintList();
-  paintViewer();
-
-  return el("div", { class: "stack" }, [
-    el("div", { class: "toolbar" }, [
-      search,
-      meta,
-      el("span", { class: "toolbar__spacer" }),
-      el("button", {
-        class: "btn btn--ghost btn--sm",
-        onClick: () => copyText(result.terraform[active], `${active} copied`),
-      }, [icon("copy", 14), el("span", { text: "Copy file" })]),
-      el("button", {
-        class: "btn btn--secondary btn--sm",
-        onClick: () => downloadText(result.terraform[active], active),
-      }, [icon("download", 14), el("span", { text: "Download" })]),
-    ]),
-    el("div", { class: "split split--code" }, [fileList, viewer]),
-  ]);
-}
-
 /* ==================================================================
    Validation
    ================================================================== */
