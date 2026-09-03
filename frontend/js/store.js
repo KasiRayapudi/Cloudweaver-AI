@@ -39,7 +39,11 @@ const state = {
   result: null,
   error: null,
   extractor: persisted.extractor === "llm" ? "llm" : "rule",
-  theme: persisted.theme || "system",
+  // Dark by default rather than following the operating system. This is a
+  // console for reading diagrams and code, where a dark ground is the
+  // convention, and a demo should not depend on the presenter's OS setting.
+  // An explicit choice still wins and is remembered.
+  theme: persisted.theme || "dark",
   sidebar: persisted.sidebar === "collapsed" ? "collapsed" : "expanded",
   activeTab: "overview",
   selectedResource: null,

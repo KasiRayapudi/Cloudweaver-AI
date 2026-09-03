@@ -1274,3 +1274,54 @@
 @media (max-width: 640px) {
   .panel__blurb { display: none; }
 }
+
+/* ==================================================================
+   Architecture summary bar
+   ==================================================================
+   Facts above the picture. Every value is one the API already
+   returned; nothing here is recomputed in the browser.
+   ================================================================== */
+.arch-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(124px, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--border-default);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.arch-summary__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  min-width: 0;
+}
+.arch-summary__cell dt {
+  font-size: var(--text-2xs);
+  font-weight: 620;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  white-space: nowrap;
+}
+.arch-summary__cell dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg-default);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.arch-summary__cell.is-error dd { color: var(--danger); }
+.arch-summary__cell.is-warning dd { color: var(--warning); }
+.arch-summary__cell.is-clean dd { color: var(--success); }
+
+@media (max-width: 640px) {
+  .arch-summary { grid-template-columns: repeat(2, 1fr); }
+}

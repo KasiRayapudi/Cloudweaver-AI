@@ -575,7 +575,43 @@ function renderDiagram(result, ctx) {
   });
 
   ctx.state.viewer = viewer;
-  return el("div", { class: "diagram-layout" }, [viewer.element, drawer]);
+
+  // Facts about the design, above the picture of it. Everything here is a
+  // value the API already returned; nothing is recomputed in the browser.
+  const { summary, findings } = result;
+  const errors = findings.filter((f) => f.severity === "error").length;
+  const warnings = findings.filter((f) => f.severity === "warning").length;
+
+  const facts = [
+    ["Architecture", summary.name],
+    ["Region", summary.region],
+    ["Environment", summary.environment],
+    ["Resources", String(summary.resource_count)],
+    ["Terraform files", String(summary.file_count)],
+    ["Est. monthly", formatCurrency(summary.estimated_monthly_cost_usd)],
+    ["Validation", errors ? `${errors} error${errors === 1 ? "" : "s"}`
+      : warnings ? `${warnings} warning${warnings === 1 ? "" : "s"}` : "Clean"],
+    ["Generated in", `${Math.round(summary.duration_ms)} ms`],
+  ];
+
+  const summaryBar = el("dl", {
+    class: "arch-summary",
+    "aria-label": "Architecture summary",
+  }, facts.flatMap(([label, value], index) => [
+    el("div", {
+      class: `arch-summary__cell${
+        index === 6 ? (errors ? " is-error" : warnings ? " is-warning" : " is-clean") : ""
+      }`,
+    }, [
+      el("dt", { text: label }),
+      el("dd", { class: index >= 3 ? "tabular" : "", text: value }),
+    ]),
+  ]));
+
+  return el("div", { class: "stack" }, [
+    summaryBar,
+    el("div", { class: "diagram-layout" }, [viewer.element, drawer]),
+  ]);
 }
 
 /* ==================================================================

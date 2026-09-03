@@ -11,12 +11,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 
-  <link rel="stylesheet" href="/static/styles/tokens.css">
-  <link rel="stylesheet" href="/static/styles/base.css">
-  <link rel="stylesheet" href="/static/styles/components.css">
-  <link rel="stylesheet" href="/static/styles/layout.css">
-  <link rel="stylesheet" href="/static/styles/compose.css">
-  <link rel="stylesheet" href="/static/styles/result.css">
+  <link rel="stylesheet" href="/static/styles/tokens.css?v=2">
+  <link rel="stylesheet" href="/static/styles/base.css?v=2">
+  <link rel="stylesheet" href="/static/styles/components.css?v=2">
+  <link rel="stylesheet" href="/static/styles/layout.css?v=2">
+  <link rel="stylesheet" href="/static/styles/compose.css?v=2">
+  <link rel="stylesheet" href="/static/styles/result.css?v=2">
 
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230f7d73'/><path d='M9 20a4.5 4.5 0 0 1 .6-9 6 6 0 0 1 11.3 1.6A3.7 3.7 0 0 1 22 20z' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/></svg>">
 </head>
@@ -104,6 +104,49 @@
           <span class="switch__track"><span class="switch__thumb"></span></span>
           <span>LLM</span>
         </label>
+
+        <span class="topbar__divider" aria-hidden="true"></span>
+
+        <div class="menu-anchor">
+          <button class="btn btn--ghost btn--icon btn--sm" id="settings-trigger"
+                  aria-haspopup="menu" aria-expanded="false"
+                  data-tooltip="Settings" aria-label="Settings">
+            <span data-icon="shield"></span>
+          </button>
+          <div class="menu menu--right" id="settings-menu" role="menu" hidden>
+            <div class="menu__label">Appearance</div>
+            <button class="menu__item" role="menuitem" type="button" data-theme-set="light">
+              <span data-icon="sun"></span><span>Light</span>
+            </button>
+            <button class="menu__item" role="menuitem" type="button" data-theme-set="dark">
+              <span data-icon="moon"></span><span>Dark</span>
+            </button>
+            <button class="menu__item" role="menuitem" type="button" data-theme-set="system">
+              <span data-icon="panel"></span><span>Match system</span>
+            </button>
+            <div class="menu__separator" role="separator"></div>
+            <div class="menu__label">Data</div>
+            <button class="menu__item" role="menuitem" type="button" id="menu-clear-history">
+              <span data-icon="trash"></span><span>Clear saved history</span>
+            </button>
+            <a class="menu__item" role="menuitem" href="/docs" target="_blank" rel="noreferrer noopener">
+              <span data-icon="book"></span><span>API reference</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="menu-anchor">
+          <button class="btn btn--ghost btn--icon btn--sm" id="status-trigger"
+                  aria-haspopup="menu" aria-expanded="false"
+                  data-tooltip="System status" aria-label="System status">
+            <span data-icon="info"></span>
+            <span class="status-dot" id="status-dot" aria-hidden="true"></span>
+          </button>
+          <div class="menu menu--right menu--wide" id="status-menu" role="menu" hidden>
+            <div class="menu__label">System status</div>
+            <dl class="status-list" id="status-list"></dl>
+          </div>
+        </div>
       </header>
 
       <main class="main" id="main" tabindex="-1">
@@ -245,6 +288,6 @@
     </div>
   </div>
 
-  <script type="module" src="/static/js/app.js"></script>
+  <script type="module" src="/static/js/app.js?v=2"></script>
 </body>
 </html>

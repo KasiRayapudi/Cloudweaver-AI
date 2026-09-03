@@ -77,6 +77,54 @@ function setPrompt(text, { focus = true } = {}) {
 }
 
 /* ------------------------------------------------------------------
+   Rotating placeholder
+   ------------------------------------------------------------------
+   Shows the shape of a good prompt without the user having to read a
+   manual. Rotation stops the moment they focus or type: a placeholder
+   changing under someone who is composing is a distraction, not a hint.
+   ------------------------------------------------------------------ */
+const PLACEHOLDERS = [
+  "A production web app in eu-west-1: an auto scaling group behind an "
+    + "application load balancer with HTTPS, a Multi-AZ PostgreSQL database, "
+    + "and an S3 bucket for uploads.",
+  "API Gateway in front of a Python Lambda that reads a DynamoDB table, "
+    + "with an SQS queue for background jobs.",
+  "An EKS cluster with 4 t3.medium nodes in private subnets, a bastion host "
+    + "and an S3 bucket for artifacts.",
+  "An EC2 instance called web-01 in my existing VPC vpc-0abc123def456, "
+    + "allowing SSH and HTTPS.",
+  "A static site in S3 behind CloudFront with a Route 53 domain and a WAF.",
+  "A network load balancer with TLS termination on port 443 in front of "
+    + "two web servers.",
+];
+
+let placeholderTimer = null;
+
+function startPlaceholderRotation() {
+  let index = 0;
+  const field = dom.prompt;
+  field.placeholder = PLACEHOLDERS[0];
+
+  function stop() {
+    clearInterval(placeholderTimer);
+    placeholderTimer = null;
+  }
+
+  placeholderTimer = setInterval(() => {
+    if (field.value || document.activeElement === field) return;
+    index = (index + 1) % PLACEHOLDERS.length;
+    field.classList.add("is-fading");
+    setTimeout(() => {
+      field.placeholder = PLACEHOLDERS[index];
+      field.classList.remove("is-fading");
+    }, 180);
+  }, 5200);
+
+  field.addEventListener("focus", stop, { once: true });
+  field.addEventListener("input", stop, { once: true });
+}
+
+/* ------------------------------------------------------------------
    Generation
    ------------------------------------------------------------------ */
 async function generate() {
@@ -371,6 +419,97 @@ function toggleSidebar() {
 }
 
 /* ------------------------------------------------------------------
+   Top bar menus
+   ------------------------------------------------------------------ */
+
+/**
+ * One open menu at a time, closed by Escape, an outside click, or opening
+ * the other. Written once here rather than per menu so the two cannot get
+ * out of step.
+ */
+function wireMenus() {
+  const menus = [
+    { trigger: $("settings-trigger"), panel: $("settings-menu") },
+    { trigger: $("status-trigger"), panel: $("status-menu") },
+  ];
+
+  function closeAll(except) {
+    for (const entry of menus) {
+      if (entry === except) continue;
+      entry.panel.hidden = true;
+      entry.trigger.setAttribute("aria-expanded", "false");
+    }
+  }
+
+  for (const entry of menus) {
+    entry.trigger.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const opening = entry.panel.hidden;
+      closeAll(entry);
+      entry.panel.hidden = !opening;
+      entry.trigger.setAttribute("aria-expanded", String(opening));
+      if (opening) {
+        if (entry.panel === $("status-menu")) paintStatus();
+        entry.panel.querySelector(".menu__item")?.focus();
+      }
+    });
+    entry.panel.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      entry.panel.hidden = true;
+      entry.trigger.setAttribute("aria-expanded", "false");
+      entry.trigger.focus();
+    });
+  }
+
+  document.addEventListener("click", () => closeAll(null));
+
+  for (const button of document.querySelectorAll("[data-theme-set]")) {
+    button.addEventListener("click", () => {
+      const theme = button.dataset.themeSet;
+      store.set({ theme }, { persistState: true });
+      applyTheme(theme);
+      updateThemeButton();
+      closeAll(null);
+      toast(`Theme set to ${theme}`, { variant: "success", duration: 1800 });
+    });
+  }
+
+  $("menu-clear-history").addEventListener("click", () => {
+    store.clearHistory();
+    closeAll(null);
+    toast("History cleared", { variant: "info", duration: 2000 });
+  });
+}
+
+/** Live figures, so the menu reports the session rather than a fixed blurb. */
+function paintStatus() {
+  const list = $("status-list");
+  const health = store.state.health;
+  const result = store.state.result;
+
+  const rows = [
+    ["Backend", health ? `Online · v${health.version}` : "Unreachable"],
+    ["Extractor", health ? health.extractor : "unknown"],
+    ["LLM extraction", health?.llm_available ? "Available" : "Not configured"],
+    ["Designs this session", String(store.state.history.length)],
+  ];
+  if (result) {
+    rows.push(
+      ["Last generation", `${Math.round(result.summary.duration_ms)} ms`],
+      ["Resources", String(result.summary.resource_count)],
+    );
+  }
+
+  clear(list);
+  for (const [label, value] of rows) {
+    list.append(
+      el("dt", { text: label }),
+      el("dd", { text: value }),
+    );
+  }
+}
+
+/* ------------------------------------------------------------------
    Wiring
    ------------------------------------------------------------------ */
 function bind(palette) {
@@ -406,6 +545,7 @@ function bind(palette) {
   });
 
   $("theme-toggle").addEventListener("click", cycleTheme);
+  wireMenus();
   $("sidebar-toggle").addEventListener("click", toggleSidebar);
   $("palette-trigger").addEventListener("click", palette.open);
   $("browse-all-templates")?.addEventListener("click", palette.open);
@@ -468,6 +608,7 @@ async function start() {
 
   renderTemplates();
   renderSuggestions();
+  startPlaceholderRotation();
   renderHistory();
   renderFavourites();
   autoGrow();
@@ -498,6 +639,7 @@ async function start() {
   try {
     const health = await api.health();
     store.set({ health });
+    $("status-dot").classList.add("is-online");
     if (!health.llm_available) {
       dom.useLlm.disabled = true;
       dom.useLlm.closest(".switch").dataset.tooltip =
@@ -508,6 +650,7 @@ async function start() {
       }
     }
   } catch {
+    $("status-dot").classList.add("is-offline");
     toast("Backend unreachable", {
       message: "Start the server with: python -m uvicorn app.main:app --app-dir backend",
       variant: "error",

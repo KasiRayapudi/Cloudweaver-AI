@@ -23,6 +23,25 @@ logging.basicConfig(
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
+
+class RevalidatingStatic(StaticFiles):
+    """Serve frontend assets with a must-revalidate policy.
+
+    The default StaticFiles sends no cache directives, so a browser is free to
+    reuse a module indefinitely. That produced a genuinely confusing failure
+    during development: an edited module kept running its previous version,
+    and the symptom -- a control that does nothing -- looks exactly like a
+    logic bug rather than a stale asset.
+
+    "no-cache" still permits caching; it requires the browser to revalidate
+    first, so unchanged files come back as a 304 and cost nothing.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
 app = FastAPI(
     title="AI-Driven Infrastructure Diagram and IaC Generator",
     description=(
@@ -45,8 +64,11 @@ app.add_middleware(
 app.include_router(router, prefix="/api")
 
 if FRONTEND_DIR.is_dir():
-    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+    app.mount("/static", RevalidatingStatic(directory=FRONTEND_DIR), name="static")
 
     @app.get("/", include_in_schema=False)
     def index() -> FileResponse:
-        return FileResponse(FRONTEND_DIR / "index.html")
+        return FileResponse(
+            FRONTEND_DIR / "index.html",
+            headers={"Cache-Control": "no-cache, must-revalidate"},
+        )
