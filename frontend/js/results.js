@@ -8,6 +8,7 @@
 
 import { createDiagramViewer } from "./diagram.js";
 import { renderCost } from "./cost-view.js";
+import { renderOptimize } from "./optimize-view.js";
 import { renderValidation } from "./validation-view.js";
 import { renderTerraform } from "./terraform-view.js";
 import { clear, copyText, downloadText, el, formatCurrency, icon, toast } from "./ui.js";
@@ -20,6 +21,7 @@ const TABS = [
   { id: "diagram", label: "Architecture", icon: "route" },
   { id: "terraform", label: "Terraform", icon: "code" },
   { id: "validation", label: "Validation", icon: "shield" },
+  { id: "optimize", label: "Optimise", icon: "bolt" },
   { id: "trace", label: "Decision trace", icon: "clock" },
   { id: "cost", label: "Cost", icon: "chart" },
   { id: "dependencies", label: "Dependencies", icon: "route" },
@@ -211,6 +213,7 @@ function tabCount(id, result) {
     case "resources": return result.spec.resources.length;
     case "terraform": return Object.keys(result.terraform).length;
     case "validation": return result.findings.length;
+    case "optimize": return (result.recommendations || []).length;
     case "trace": return result.extraction.length;
     default: return null;
   }
@@ -723,6 +726,7 @@ const renderers = {
   diagram: renderDiagram,
   terraform: renderTerraform,
   validation: renderValidation,
+  optimize: renderOptimize,
   trace: renderTrace,
   cost: renderCost,
   dependencies: renderDependencies,

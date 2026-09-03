@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from app.config import Settings, get_settings
 from app.engine.emission import audit as audit_emission
 from app.engine.mapper import ResourceMapper
+from app.engine.optimizer import Optimizer, Recommendation, summarise
 from app.engine.validator import Finding, SpecValidator, estimate_monthly_cost
 from app.generators.diagram.layout import LayoutEngine
 from app.generators.diagram.mermaid import MermaidRenderer
@@ -35,6 +36,7 @@ class GenerationResult:
     diagram_mermaid: str
     terraform: dict[str, str]
     findings: list[Finding] = field(default_factory=list)
+    recommendations: list[Recommendation] = field(default_factory=list)
     estimated_monthly_cost: float = 0.0
     duration_ms: float = 0.0
 
@@ -44,6 +46,8 @@ class GenerationResult:
             "diagram": {"svg": self.diagram_svg, "mermaid": self.diagram_mermaid},
             "terraform": self.terraform,
             "findings": [f.to_dict() for f in self.findings],
+            "recommendations": [r.to_dict() for r in self.recommendations],
+            "optimization": summarise(self.recommendations),
             "dependency_graph": {
                 "edges": self.spec.dependency_graph(),
                 "creation_order": self.spec.creation_order(),
@@ -97,6 +101,7 @@ class Pipeline:
         )
         self.mapper = ResourceMapper()
         self.validator = SpecValidator()
+        self.optimizer = Optimizer()
         self.terraform = TerraformGenerator()
         self.layout = LayoutEngine()
         self.svg = SvgRenderer()
@@ -141,6 +146,11 @@ class Pipeline:
         # Stage 3b: validation and policy checks.
         findings = self.validator.validate(spec)
 
+        # Stage 3c: optimisation. Advice about the design, never a change to
+        # it -- the optimiser reads the spec and cannot mutate it, which is
+        # what keeps "no resource is invented" true.
+        recommendations = self.optimizer.analyse(spec)
+
         # Stages 4+5: the two outputs, both from `spec`.
         layout = self.layout.build(spec)
         svg = self.svg.render(layout)
@@ -161,6 +171,7 @@ class Pipeline:
             diagram_mermaid=mermaid,
             terraform=terraform,
             findings=findings,
+            recommendations=recommendations,
             estimated_monthly_cost=estimate_monthly_cost(spec),
             duration_ms=(time.perf_counter() - started) * 1000,
         )

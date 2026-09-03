@@ -71,6 +71,30 @@ class ExclusionModel(BaseModel):
     evidence: str
 
 
+class RecommendationModel(BaseModel):
+    """One improvement the optimiser suggests. Advice, never a resource."""
+
+    id: str
+    category: str
+    priority: str
+    title: str
+    reason: str
+    action: str
+    resources: list[str]
+    difficulty: str
+    monthly_delta_usd: float
+    confidence: float
+    pillar: str
+
+
+class OptimizationSummaryModel(BaseModel):
+    total: int
+    by_category: dict[str, int]
+    by_priority: dict[str, int]
+    potential_monthly_saving_usd: float
+    additional_monthly_spend_usd: float
+
+
 class DependencyGraphModel(BaseModel):
     #: resource id -> ids it must be created after
     edges: dict[str, list[str]]
@@ -84,6 +108,8 @@ class GenerateResponse(BaseModel):
     diagram: DiagramModel
     terraform: dict[str, str]
     findings: list[FindingModel]
+    recommendations: list[RecommendationModel]
+    optimization: OptimizationSummaryModel
     dependency_graph: DependencyGraphModel
     extraction: list[ExtractionModel]
     exclusions: list[ExclusionModel]
