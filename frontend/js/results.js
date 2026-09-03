@@ -8,12 +8,11 @@
 
 import { createDiagramViewer } from "./diagram.js";
 import { renderCost } from "./cost-view.js";
+import { renderValidation } from "./validation-view.js";
 import { renderTerraform } from "./terraform-view.js";
 import { clear, copyText, downloadText, el, formatCurrency, icon, toast } from "./ui.js";
 import { store } from "./store.js";
 
-const SEVERITY_ORDER = { error: 0, warning: 1, info: 2 };
-const SEVERITY_LABEL = { error: "Errors", warning: "Warnings", info: "Recommendations" };
 
 const TABS = [
   { id: "overview", label: "Overview", icon: "home" },
@@ -596,41 +595,6 @@ function findingRow(finding, { compact = false } = {}) {
       ]),
     ]),
   ]);
-}
-
-function renderValidation(result) {
-  const { findings } = result;
-  if (!findings.length) {
-    return el("div", { class: "state" }, [
-      el("div", { class: "state__icon", style: { background: "var(--success-bg)", color: "var(--success)" } },
-        [icon("check", 20)]),
-      el("div", { class: "state__title", text: "No issues found" }),
-      el("p", { class: "state__message",
-        text: "The design passes every structural, security, reliability and AWS constraint check." }),
-    ]);
-  }
-
-  const groups = new Map();
-  for (const finding of [...findings].sort(
-    (a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity],
-  )) {
-    if (!groups.has(finding.severity)) groups.set(finding.severity, []);
-    groups.get(finding.severity).push(finding);
-  }
-
-  return el("div", { class: "stack" },
-    [...groups].map(([severity, items]) =>
-      el("section", { class: "panel" }, [
-        el("div", { class: "panel__header" }, [
-          el("span", { class: `dot dot--${severity}` }),
-          el("span", { class: "panel__title", text: SEVERITY_LABEL[severity] }),
-          el("span", { class: `badge badge--${severity === "error" ? "error" : severity === "warning" ? "warning" : "info"}`,
-            text: String(items.length) }),
-        ]),
-        el("div", { class: "panel__body stack stack--tight" }, items.map((f) => findingRow(f))),
-      ]),
-    ),
-  );
 }
 
 /* ==================================================================
