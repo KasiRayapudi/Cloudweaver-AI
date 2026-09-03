@@ -10,18 +10,37 @@ tells you precisely where the work stopped and what to do next.
 
 ## 1. Current milestone
 
-**Demo polish pass, Priority 2 of 6: Terraform viewer.**
+**Demo polish pass: all six priorities complete.**
 
 The work is organised as six demo priorities:
 
 | # | Priority | State |
 |---|---|---|
-| 1 | Diagram viewer | **Complete**, committed `a5fc56b` |
-| 2 | Terraform viewer | **In progress** — tokeniser written, not yet wired in |
-| 3 | Cost dashboard | Not started |
-| 4 | Validation dashboard | Not started |
-| 5 | Overall UI polish | Partly done via milestones 1–2 |
-| 6 | Navigation (sidebar, top bar, palette) | Partly done; menus outstanding |
+| 1 | Diagram viewer | **Complete** — `a5fc56b` |
+| 2 | Terraform viewer | **Complete** — `2eda2b7` |
+| 3 | Cost dashboard | **Complete** — `26d3dd9` |
+| 4 | Validation dashboard | **Complete** — `9dfdaa1` |
+| 5 | Overall UI polish | **Complete** — `eb0e036` |
+| 6 | Navigation and top bar | **Complete** — `eb0e036` |
+
+Last commit: `eb0e036`. Working tree clean, 580 tests pass, ruff clean,
+17/17 projects pass `terraform validate`.
+
+### Added after the handoff was first written
+
+- Terraform viewer: syntax highlighting, folding, block navigation
+  (`frontend/js/terraform-view.js`, `frontend/js/hcl.js`)
+- Cost dashboard: daily/annual cards, donut by service family,
+  largest-cost callout (`frontend/js/cost-view.js`)
+- Validation dashboard: verdict strip, expandable findings, suggested fixes
+  for all 32 backend finding codes (`frontend/js/validation-view.js`)
+- Dark default, settings and status menus, rotating placeholders,
+  architecture summary bar above the diagram
+- **Stale-asset fix**: static assets now send `no-cache, must-revalidate`
+  and asset URLs carry `?v=2`. Bump the stamp when shipping frontend
+  changes. See "Remaining bugs" for the one caveat.
+
+`results.js` went from 900 lines to 693 as the three views moved out.
 
 ---
 
@@ -284,6 +303,14 @@ implemented literally, and a reviewer may want them revisited:
    Bash environment. Orphaned servers hold port 8099 and silently serve old
    Python, which twice made a working change look broken. Use the taskkill
    command in section 11.
+
+4. **Module imports are not versioned.** `index.html` stamps `?v=2` on the
+   entry point and the stylesheets, but `app.js` imports its siblings with
+   bare paths (`./ui.js`). A browser that cached those modules *before* the
+   `Cache-Control` fix landed considers them fresh forever and will not
+   revalidate. **If the UI behaves like an older version, hard reload once
+   (Ctrl+Shift+R).** Every browser loading the app from now on is correct
+   automatically, because the header is present from its first fetch.
 
 ### Known limitations, by design
 
