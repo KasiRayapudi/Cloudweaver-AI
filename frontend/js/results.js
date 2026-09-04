@@ -8,6 +8,7 @@
 
 import { createDiagramViewer } from "./diagram.js";
 import { categoryOf, renderInspector, renderInspectorEmpty } from "./inspector.js";
+import { renderArchitect } from "./architect-view.js";
 import { renderCost } from "./cost-view.js";
 import { renderOptimize } from "./optimize-view.js";
 import { renderValidation } from "./validation-view.js";
@@ -18,6 +19,7 @@ import { store } from "./store.js";
 
 const TABS = [
   { id: "overview", label: "Overview", icon: "home" },
+  { id: "architect", label: "Ask", icon: "sparkles" },
   { id: "resources", label: "Resources", icon: "layers" },
   { id: "diagram", label: "Architecture", icon: "route" },
   { id: "terraform", label: "Terraform", icon: "code" },
@@ -594,6 +596,7 @@ function renderDependencies(result) {
 /* ================================================================== */
 const renderers = {
   overview: renderOverview,
+  architect: renderArchitect,
   resources: renderResources,
   diagram: renderDiagram,
   terraform: renderTerraform,

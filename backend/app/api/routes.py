@@ -8,12 +8,15 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from app.api.schemas import (
+    AnswerModel,
+    AskRequest,
     ExampleModel,
     GenerateRequest,
     GenerateResponse,
     HealthResponse,
 )
 from app.config import get_settings
+from app.engine.architect import Architect
 from app.engine.pipeline import Pipeline
 from app.export.bundle import build_zip
 from app.nlp.catalog import PROVIDER_DISPLAY
@@ -24,6 +27,7 @@ router = APIRouter()
 VERSION = "1.0.0"
 
 _pipeline: Pipeline | None = None
+_architect: Architect | None = None
 
 
 def get_pipeline() -> Pipeline:
@@ -32,6 +36,13 @@ def get_pipeline() -> Pipeline:
     if _pipeline is None:
         _pipeline = Pipeline()
     return _pipeline
+
+
+def get_architect() -> Architect:
+    global _architect
+    if _architect is None:
+        _architect = Architect()
+    return _architect
 
 
 EXAMPLES: list[ExampleModel] = [
@@ -126,7 +137,36 @@ def generate(request: GenerateRequest) -> GenerateResponse:
                 "behind a load balancer with a PostgreSQL database'."
             ),
         )
-    return GenerateResponse(**result.to_dict())
+    payload = result.to_dict()
+    payload["suggestions"] = get_architect().suggestions(result)
+    return GenerateResponse(**payload)
+
+
+@router.post("/ask", response_model=AnswerModel, tags=["assistant"])
+def ask(request: AskRequest) -> AnswerModel:
+    """Answer a question about a generated design.
+
+    Deterministic wherever the pipeline's own data can answer it; the response
+    always names which engines produced it, so a caller can tell a fact about
+    their architecture from a model's general knowledge.
+    """
+    result = get_pipeline().run(request.prompt, extractor=request.extractor)
+
+    if result.spec.unsupported_provider is not None:
+        raise HTTPException(
+            status_code=422,
+            detail="That requirement names a cloud this generator does not "
+                   "support, so there is no design to ask questions about.",
+        )
+    if not result.spec.resources:
+        raise HTTPException(
+            status_code=422,
+            detail="No resources could be identified in that requirement, so "
+                   "there is no design to ask questions about.",
+        )
+
+    answer = get_architect().ask(request.question, result)
+    return AnswerModel(**answer.to_dict())
 
 
 @router.post("/generate/download", tags=["generation"])

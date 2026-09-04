@@ -140,9 +140,41 @@ class GenerateResponse(BaseModel):
     recommendations: list[RecommendationModel]
     optimization: OptimizationSummaryModel
     explanations: list[ExplanationModel]
+    #: Questions worth asking about this particular design. Computed by the
+    #: architect so the panel opens with something useful rather than a
+    #: fixed list that may not apply.
+    suggestions: list[str]
     dependency_graph: DependencyGraphModel
     extraction: list[ExtractionModel]
     exclusions: list[ExclusionModel]
+
+
+class AskRequest(BaseModel):
+    """A question about a design, plus the prompt that produced it.
+
+    The design is regenerated from the prompt rather than being held in a
+    session. Generation is deterministic and takes tens of milliseconds, so
+    the same prompt gives the same design every time -- which means the
+    assistant needs no server-side state to be correct.
+    """
+
+    prompt: str = Field(..., min_length=1, max_length=8000)
+    question: str = Field(..., min_length=1, max_length=2000)
+    extractor: Literal["rule", "llm"] | None = None
+
+
+class AnswerModel(BaseModel):
+    question: str
+    intent: str
+    text: str
+    sources: list[str]
+    deterministic: bool
+    confidence: float
+    resources: list[str]
+    recommendations: list[RecommendationModel]
+    findings: list[FindingModel]
+    code: str | None = None
+    follow_ups: list[str]
 
 
 class ExampleModel(BaseModel):

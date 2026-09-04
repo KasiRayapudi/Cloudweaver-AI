@@ -1545,3 +1545,206 @@
   color: var(--fg-subtle);
   line-height: var(--leading-snug);
 }
+
+/* ==================================================================
+   AI Architect panel
+   ==================================================================
+   A conversation about one design. The source badges are the point of
+   the design: a reader must always be able to tell a fact about their
+   architecture from a model's general knowledge.
+   ================================================================== */
+.chat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: min(70dvh, 720px);
+}
+
+.chat__thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  scroll-behavior: smooth;
+}
+
+.chat__intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-6);
+  text-align: center;
+}
+.chat__intro-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-brand-subtle);
+  color: var(--fg-brand);
+}
+.chat__intro h3 { font-size: var(--text-base); }
+.chat__intro p {
+  max-width: 56ch;
+  font-size: var(--text-sm);
+  color: var(--fg-muted);
+}
+.chat__intro-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs) !important;
+  color: var(--fg-subtle) !important;
+}
+
+.chat__turn { display: flex; margin-bottom: var(--space-4); }
+.chat__turn--asked { justify-content: flex-end; }
+
+.chat__bubble {
+  max-width: 88%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  animation: rise-in var(--duration-base) var(--ease-out);
+}
+
+.chat__bubble--asked {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-bottom-right-radius: var(--radius-xs);
+  font-weight: 520;
+}
+
+.chat__bubble--answer {
+  width: 100%;
+  max-width: 100%;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-bottom-left-radius: var(--radius-xs);
+}
+
+.chat__bubble--pending {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--bg-subtle);
+  color: var(--fg-subtle);
+  font-size: var(--text-xs);
+}
+.chat__bubble--pending .btn__spinner { color: var(--accent); }
+
+.chat__bubble--error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.chat__line { line-height: var(--leading-normal); }
+.chat__bullet {
+  padding-left: var(--space-4);
+  text-indent: calc(-1 * var(--space-3));
+  line-height: var(--leading-normal);
+}
+.chat__bullet::before { content: "• "; color: var(--fg-faint); }
+.chat__gap { height: var(--space-2); }
+.chat__rule {
+  margin: var(--space-3) 0;
+  border-top: 1px solid var(--border-default);
+}
+.chat__text code {
+  padding: 1px 4px;
+  background: var(--bg-inset);
+  border-radius: 3px;
+  font-size: 0.92em;
+}
+
+/* A code span naming a resource is a link into the inspector. */
+.chat__resource {
+  padding: 0;
+  border-radius: 3px;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.chat__resource code {
+  color: var(--fg-brand);
+  border-bottom: 1px dashed currentColor;
+  cursor: pointer;
+}
+.chat__resource:hover code { background: var(--bg-brand-subtle); }
+
+.chat__code { margin-top: var(--space-3); max-height: 320px; }
+
+.chat__sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-default);
+}
+.chat__sources-label {
+  font-size: var(--text-2xs);
+  font-weight: 650;
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+.chat__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.chat__warn {
+  font-size: var(--text-2xs);
+  color: var(--warning);
+  font-weight: 560;
+}
+
+.chat__details { margin-top: var(--space-3); }
+.chat__rec-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-2);
+}
+.chat__rec-reason,
+.chat__rec-action {
+  padding: 0 var(--space-3) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--fg-muted);
+}
+.chat__rec-action { color: var(--fg-brand); font-weight: 520; }
+
+.chat__suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.chat__composer {
+  display: flex;
+  gap: var(--space-2);
+  flex: none;
+}
+.chat__composer .field { flex: 1; }
+
+@media (max-width: 720px) {
+  .chat { height: min(76dvh, 640px); }
+  .chat__bubble { max-width: 100%; }
+}

@@ -74,6 +74,19 @@ export const api = {
   generate: (prompt, { extractor = "rule", signal } = {}) =>
     request("/api/generate", { method: "POST", body: { prompt, extractor }, signal }),
 
+  /**
+   * Ask a question about a design.
+   *
+   * The prompt is sent with the question rather than a session id: generation
+   * is deterministic, so the backend rebuilds the identical design and the
+   * answer is guaranteed to be about the architecture on screen.
+   */
+  ask: (prompt, question, { extractor = "rule" } = {}) =>
+    request("/api/ask", {
+      method: "POST",
+      body: { prompt, question, extractor },
+    }),
+
   /** Returns a Blob; the zip endpoint does not speak JSON. */
   async download(prompt, { extractor = "rule" } = {}) {
     const response = await fetch("/api/generate/download", {
