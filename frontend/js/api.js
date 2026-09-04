@@ -87,6 +87,34 @@ export const api = {
       body: { prompt, question, extractor },
     }),
 
+  /**
+   * A themed SVG of the diagram, rendered server-side.
+   *
+   * The on-screen copy carries a prefers-color-scheme query, so exporting it
+   * would produce a file that looks different on every machine that opens it.
+   * The backend renders one fixed palette instead.
+   */
+  async exportDiagram(prompt, { theme = "light", transparent = false } = {}) {
+    const response = await fetch("/api/export/diagram", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt, theme, transparent }),
+    });
+    if (!response.ok) throw new ApiError("Could not render the diagram for export.");
+    return response.text();
+  },
+
+  /** The printable architecture report, as an HTML document. */
+  async exportReport(prompt, { theme = "print" } = {}) {
+    const response = await fetch("/api/export/report", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt, theme }),
+    });
+    if (!response.ok) throw new ApiError("Could not build the report.");
+    return response.text();
+  },
+
   /** Returns a Blob; the zip endpoint does not speak JSON. */
   async download(prompt, { extractor = "rule" } = {}) {
     const response = await fetch("/api/generate/download", {

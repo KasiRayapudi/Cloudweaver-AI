@@ -177,6 +177,23 @@ class AnswerModel(BaseModel):
     follow_ups: list[str]
 
 
+class ExportRequest(BaseModel):
+    """Ask for one artefact from a design.
+
+    The prompt is sent rather than a session id: generation is deterministic,
+    so the export is guaranteed to describe the same design the user is
+    looking at, with no server-side state to fall out of sync.
+    """
+
+    prompt: str = Field(..., min_length=1, max_length=8000)
+    extractor: Literal["rule", "llm"] | None = None
+    #: "auto" follows the reader's system theme and is right for the embedded
+    #: viewer. Every other value is fixed, which is what an exported figure
+    #: needs -- a diagram that inverts on the reviewer's laptop is a defect.
+    theme: Literal["auto", "light", "dark", "print"] = "light"
+    transparent: bool = False
+
+
 class ExampleModel(BaseModel):
     title: str
     prompt: str

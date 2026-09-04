@@ -11,6 +11,7 @@ from app.api.schemas import (
     AnswerModel,
     AskRequest,
     ExampleModel,
+    ExportRequest,
     GenerateRequest,
     GenerateResponse,
     HealthResponse,
@@ -19,6 +20,9 @@ from app.config import get_settings
 from app.engine.architect import Architect
 from app.engine.pipeline import Pipeline
 from app.export.bundle import build_zip
+from app.export.report import build_report
+from app.generators.diagram.layout import LayoutEngine
+from app.generators.diagram.svg_renderer import SvgRenderer
 from app.nlp.catalog import PROVIDER_DISPLAY
 
 logger = logging.getLogger(__name__)
@@ -167,6 +171,68 @@ def ask(request: AskRequest) -> AnswerModel:
 
     answer = get_architect().ask(request.question, result)
     return AnswerModel(**answer.to_dict())
+
+
+def _design_for(request: ExportRequest):
+    """Regenerate the design an export request refers to."""
+    result = get_pipeline().run(request.prompt, extractor=request.extractor)
+    if result.spec.unsupported_provider is not None or not result.spec.resources:
+        raise HTTPException(
+            status_code=422,
+            detail="That requirement produced no design, so there is nothing "
+                   "to export.",
+        )
+    return result
+
+
+@router.post("/export/diagram", tags=["export"])
+def export_diagram(request: ExportRequest) -> Response:
+    """The architecture diagram as a themed, self-contained SVG.
+
+    Rendered here rather than taken from the browser so the exported file has
+    one fixed palette. The on-screen copy carries a prefers-color-scheme
+    query, which would make the same file look different on every machine
+    that opens it.
+    """
+    result = _design_for(request)
+    svg = SvgRenderer().render(
+        LayoutEngine().build(result.spec),
+        theme=request.theme,
+        transparent=request.transparent,
+    )
+    name = result.spec.name or "architecture"
+    return Response(
+        content=svg,
+        media_type="image/svg+xml",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="{name}-{request.theme}.svg"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.post("/export/report", tags=["export"])
+def export_report(request: ExportRequest) -> Response:
+    """A printable architecture report.
+
+    HTML with print rules rather than a binary PDF: printing keeps the text
+    selectable and the diagram vector, needs no native rasteriser, and leaves
+    the document assertable in the test suite.
+    """
+    result = _design_for(request)
+    document = build_report(
+        result, theme="print" if request.theme == "auto" else request.theme
+    )
+    name = result.spec.name or "architecture"
+    return Response(
+        content=document,
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Content-Disposition": f'inline; filename="{name}-report.html"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.post("/generate/download", tags=["generation"])

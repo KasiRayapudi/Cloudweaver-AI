@@ -62,6 +62,30 @@ DARK_PALETTE: dict[str, tuple[str, str, str]] = {
     "ops": ("#2a2617", "#a58a3c", "#ded0a2"),
 }
 
+# Printer-friendly: near-white fills that survive a greyscale reproduction,
+# dark text, and strokes heavy enough to hold at 300 dpi. Colour is carried by
+# the stroke rather than the fill, so a black-and-white print stays legible.
+PRINT_PALETTE: dict[str, tuple[str, str, str]] = {
+    "internet": ("#ffffff", "#4a5563", "#1a2029"),
+    "traffic": ("#ffffff", "#1f4f9c", "#12233d"),
+    "compute": ("#ffffff", "#9c5c14", "#3d2508"),
+    "data": ("#ffffff", "#1c6b38", "#0d2b17"),
+    "storage": ("#ffffff", "#4a3596", "#1d1540"),
+    "integration": ("#ffffff", "#96225d", "#3d0d26"),
+    "security": ("#ffffff", "#9c2420", "#3d0e0c"),
+    "network": ("#ffffff", "#44525f", "#1a2129"),
+    "ops": ("#ffffff", "#75601f", "#2e260c"),
+}
+
+#: Chrome per theme: (page background, title, subtitle, band label).
+THEME_CHROME: dict[str, tuple[str, str, str, str]] = {
+    "light": ("#ffffff", "#1b2430", "#64748b", "#94a3b8"),
+    "dark": ("#0f141b", "#e6edf5", "#93a3b6", "#6b7c91"),
+    "print": ("#ffffff", "#000000", "#333333", "#555555"),
+}
+
+THEMES: tuple[str, ...] = ("auto", "light", "dark", "print")
+
 EDGE_STYLE: dict[str, tuple[str, str]] = {
     # kind -> (stroke class suffix, dash array)
     "traffic": ("solid", ""),
@@ -70,81 +94,132 @@ EDGE_STYLE: dict[str, tuple[str, str]] = {
 }
 
 
-def _css() -> str:
-    light = "\n".join(
-        f"    .fill-{cat} {{ fill: {fill}; stroke: {stroke}; }}\n"
-        f"    .text-{cat} {{ fill: {text}; }}\n"
-        f"    .badge-{cat} {{ fill: {stroke}; }}\n"
-        f"    .cat-{cat} .icon-mark path {{ stroke: {text}; }}"
-        for cat, (fill, stroke, text) in PALETTE.items()
+def _palette_rules(palette: dict[str, tuple[str, str, str]], indent: str) -> str:
+    return "\n".join(
+        f"{indent}.fill-{cat} {{ fill: {fill}; stroke: {stroke}; }}\n"
+        f"{indent}.text-{cat} {{ fill: {text}; }}\n"
+        f"{indent}.badge-{cat} {{ fill: {stroke}; }}\n"
+        f"{indent}.cat-{cat} .icon-mark path {{ stroke: {text}; }}"
+        for cat, (fill, stroke, text) in palette.items()
     )
-    dark = "\n".join(
-        f"      .fill-{cat} {{ fill: {fill}; stroke: {stroke}; }}\n"
-        f"      .text-{cat} {{ fill: {text}; }}\n"
-        f"      .badge-{cat} {{ fill: {stroke}; }}\n"
-        f"      .cat-{cat} .icon-mark path {{ stroke: {text}; }}"
-        for cat, (fill, stroke, text) in DARK_PALETTE.items()
-    )
-    return f"""
-  <style>
-    .bg {{ fill: #ffffff; }}
-    .node {{ stroke-width: 1.5; }}
+
+
+def _group_rules(theme: str) -> str:
+    """Boundary colours.
+
+    Print gets weight rather than tint: a pale fill vanishes in a greyscale
+    reproduction, while a heavier stroke survives it.
+    """
+    if theme == "dark":
+        return """
+    .group-region { stroke: #8a6a2f; fill: #1c1810; fill-opacity: .55; }
+    .group-vpc { stroke: #46608f; fill: #121821; fill-opacity: .6; }
+    .group-public { stroke: #35704a; fill: #101a14; fill-opacity: .5; }
+    .group-private { stroke: #414f61; fill: #141920; fill-opacity: .5; }
+    .group-label-region { fill: #c9a765; }
+    .group-label-vpc { fill: #8fb0e0; }
+    .group-label-public { fill: #7fc79a; }
+    .group-label-private { fill: #93a3b6; }"""
+    if theme == "print":
+        return """
+    .group-region { stroke: #444444; stroke-width: 2; fill: none; }
+    .group-vpc { stroke: #222222; stroke-width: 1.8; fill: none; }
+    .group-public { stroke: #666666; stroke-width: 1.4; fill: none; }
+    .group-private { stroke: #666666; stroke-width: 1.4; fill: none; }
+    .group-label-region, .group-label-vpc,
+    .group-label-public, .group-label-private { fill: #000000; }"""
+    return """
+    .group-region { stroke: #b0771f; stroke-width: 1.6; stroke-dasharray: none;
+                    fill: #fbf7ef; fill-opacity: .5; }
+    .group-vpc { stroke: #5b7cc4; stroke-width: 1.6; stroke-dasharray: none;
+                 fill: #f2f6fd; fill-opacity: .55; }
+    .group-public { stroke: #3f9c5f; stroke-dasharray: 6 4; fill: #f1f9f4;
+                    fill-opacity: .5; }
+    .group-private { stroke: #7d8fa5; stroke-dasharray: 6 4; fill: #f4f6f9;
+                     fill-opacity: .5; }
+    .group-label-region { fill: #8a5c12; }
+    .group-label-vpc { fill: #3f5c9c; }
+    .group-label-public { fill: #2c7346; }
+    .group-label-private { fill: #55677d; }"""
+
+
+def _css(theme: str = "auto", transparent: bool = False) -> str:
+    """Style block for one theme.
+
+    ``auto`` keeps the prefers-color-scheme query, which suits the embedded
+    viewer. Every other theme emits one fixed palette and no query at all: an
+    exported figure must look the same on every machine that opens it, and a
+    media query cannot promise that. A diagram in a paper that inverts itself
+    on the reviewer's laptop is a defect, not a preference.
+    """
+    resolved = theme if theme in ("dark", "print") else "light"
+    palette = {"dark": DARK_PALETTE, "print": PRINT_PALETTE}.get(resolved, PALETTE)
+    background, title, subtitle, band = THEME_CHROME[resolved]
+
+    edge = {"dark": "#63768c", "print": "#333333"}.get(resolved, "#7c8ea3")
+    edge_dep = {"dark": "#3c4a5c", "print": "#888888"}.get(resolved, "#b0bccb")
+    edge_data = "#1c6b38" if resolved == "print" else "#3f9c5f"
+    edge_label = {"dark": "#7b8da2", "print": "#555555"}.get(resolved, "#8194a8")
+    sublabel_fill = "#444444" if resolved == "print" else (
+        "#6b7c91" if resolved == "dark" else "#94a3b8")
+
+    node_stroke = "1.9" if resolved == "print" else "1.5"
+    edge_stroke = "1.9" if resolved == "print" else "1.6"
+    sub_opacity = ".95" if resolved == "print" else ".8"
+    tag_opacity = ".8" if resolved == "print" else ".58"
+    tile_opacity = ".08" if resolved == "print" else ".16"
+    bg_opacity = "0" if transparent else "1"
+
+    common = f"""
+    .bg {{ fill: {background}; fill-opacity: {bg_opacity}; }}
+    .node {{ stroke-width: {node_stroke}; }}
     .label {{ font: 600 13.5px 'Inter', 'Segoe UI', system-ui, sans-serif;
               letter-spacing: -.008em; }}
-    .sublabel {{ font: 400 11px 'Inter', 'Segoe UI', system-ui, sans-serif; opacity: .8; }}
+    .sublabel {{ font: 400 11px 'Inter', 'Segoe UI', system-ui, sans-serif;
+                 opacity: {sub_opacity}; }}
     .tag {{ font: 600 9px 'JetBrains Mono', ui-monospace, monospace;
-            letter-spacing: .09em; opacity: .58; }}
+            letter-spacing: .09em; opacity: {tag_opacity}; }}
     .badge {{ font: 700 9px 'Inter', 'Segoe UI', system-ui, sans-serif; fill: #ffffff; }}
-    .icon-tile {{ opacity: .16; }}
+    .icon-tile {{ opacity: {tile_opacity}; }}
     .icon-mark path {{ fill: none; stroke-width: 1.35; stroke-linecap: round;
                        stroke-linejoin: round; }}
-    .title {{ font: 700 17px 'Segoe UI', system-ui, sans-serif; fill: #1b2430; }}
-    .subtitle {{ font: 400 11.5px 'Segoe UI', system-ui, sans-serif; fill: #64748b; }}
-    .band {{ font: 600 10px 'Segoe UI', system-ui, sans-serif; fill: #94a3b8;
+    .title {{ font: 700 17px 'Inter', 'Segoe UI', system-ui, sans-serif; fill: {title}; }}
+    .subtitle {{ font: 400 11.5px 'Inter', 'Segoe UI', system-ui, sans-serif;
+                 fill: {subtitle}; }}
+    .band {{ font: 600 10px 'Inter', 'Segoe UI', system-ui, sans-serif; fill: {band};
              letter-spacing: .08em; }}
     .group-box {{ fill: none; stroke: #94a3b8; stroke-width: 1.4; stroke-dasharray: 7 5; }}
-    .group-region {{ stroke: #b0771f; stroke-width: 1.6; stroke-dasharray: none;
-                     fill: #fbf7ef; fill-opacity: .5; }}
-    .group-vpc {{ stroke: #5b7cc4; stroke-width: 1.6; stroke-dasharray: none;
-                  fill: #f2f6fd; fill-opacity: .55; }}
-    .group-public {{ stroke: #3f9c5f; stroke-dasharray: 6 4; fill: #f1f9f4;
-                     fill-opacity: .5; }}
-    .group-private {{ stroke: #7d8fa5; stroke-dasharray: 6 4; fill: #f4f6f9;
-                      fill-opacity: .5; }}
     .group-label {{ font: 600 11px 'Inter', 'Segoe UI', system-ui, sans-serif;
-                    fill: #64748b; letter-spacing: .02em; }}
-    .group-label-region {{ fill: #8a5c12; }}
-    .group-label-vpc {{ fill: #3f5c9c; }}
-    .group-label-public {{ fill: #2c7346; }}
-    .group-label-private {{ fill: #55677d; }}
+                    fill: {subtitle}; letter-spacing: .02em; }}
     .group-sublabel {{ font: 400 10px 'Inter', 'Segoe UI', system-ui, sans-serif;
-                       fill: #94a3b8; }}
-    .edge {{ fill: none; stroke: #7c8ea3; stroke-width: 1.6; }}
-    .edge.data {{ stroke: #3f9c5f; }}
-    .edge.dep {{ stroke: #b0bccb; }}
-    .edge-label {{ font: 400 9.5px 'Segoe UI', system-ui, sans-serif; fill: #8194a8; }}
+                       fill: {sublabel_fill}; }}
+    .edge {{ fill: none; stroke: {edge}; stroke-width: {edge_stroke}; }}
+    .edge.data {{ stroke: {edge_data}; }}
+    .edge.dep {{ stroke: {edge_dep}; }}
+    .edge-label {{ font: 400 9.5px 'Inter', 'Segoe UI', system-ui, sans-serif;
+                   fill: {edge_label}; }}
     .implied {{ stroke-dasharray: 5 3; }}
-{light}
+{_group_rules(resolved)}
+{_palette_rules(palette, "    ")}"""
+
+    if theme != "auto":
+        return "\n  <style>" + common + "\n  </style>\n"
+
+    dark_bg, dark_title, dark_sub, dark_band = THEME_CHROME["dark"]
+    return f"""
+  <style>{common}
     @media (prefers-color-scheme: dark) {{
-      .bg {{ fill: #0f141b; }}
-      .title {{ fill: #e6edf5; }}
-      .subtitle {{ fill: #93a3b6; }}
-      .band {{ fill: #6b7c91; }}
+      .bg {{ fill: {dark_bg}; }}
+      .title {{ fill: {dark_title}; }}
+      .subtitle {{ fill: {dark_sub}; }}
+      .band {{ fill: {dark_band}; }}
       .group-box {{ stroke: #47566a; }}
-      .group-region {{ stroke: #8a6a2f; fill: #1c1810; fill-opacity: .55; }}
-      .group-vpc {{ stroke: #46608f; fill: #121821; fill-opacity: .6; }}
-      .group-public {{ stroke: #35704a; fill: #101a14; fill-opacity: .5; }}
-      .group-private {{ stroke: #414f61; fill: #141920; fill-opacity: .5; }}
-      .group-label {{ fill: #93a3b6; }}
-      .group-label-region {{ fill: #c9a765; }}
-      .group-label-vpc {{ fill: #8fb0e0; }}
-      .group-label-public {{ fill: #7fc79a; }}
-      .group-label-private {{ fill: #93a3b6; }}
       .group-sublabel {{ fill: #6b7c91; }}
       .edge {{ stroke: #63768c; }}
       .edge.dep {{ stroke: #3c4a5c; }}
       .edge-label {{ fill: #7b8da2; }}
-{dark}
+{_group_rules("dark")}
+{_palette_rules(DARK_PALETTE, "      ")}
     }}
   </style>
 """
@@ -153,15 +228,27 @@ def _css() -> str:
 class SvgRenderer:
     """Renders a :class:`~app.generators.diagram.layout.Layout` as SVG."""
 
-    def render(self, layout: Layout) -> str:
+    def render(
+        self,
+        layout: Layout,
+        theme: str = "auto",
+        transparent: bool = False,
+    ) -> str:
+        """Render the layout as a self-contained SVG document.
+
+        ``theme`` is "auto" for the embedded viewer and one of light, dark or
+        print for an export. Geometry is identical across themes -- only the
+        style block differs -- so an exported figure is the same drawing the
+        user reviewed on screen, which is the point of exporting it.
+        """
         w = round(layout.width, 1)
         h = round(layout.height, 1)
         parts: list[str] = [
             f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
             f'viewBox="0 0 {w} {h}" role="img" '
             f'aria-label="Cloud architecture diagram for {escape(layout.title)}">',
-            _css(),
-            self._defs(),
+            _css(theme, transparent),
+            self._defs(theme),
             f'  <rect class="bg" width="{w}" height="{h}" rx="8"/>',
             f'  <text class="title" x="{20}" y="{28}">{escape(layout.title)}</text>',
             f'  <text class="subtitle" x="{20}" y="{45}">{escape(layout.subtitle)}</text>',
@@ -204,16 +291,18 @@ class SvgRenderer:
     # -- primitives --------------------------------------------------------
 
     @staticmethod
-    def _defs() -> str:
+    def _defs(theme: str = "auto") -> str:
+        arrow = "#333333" if theme == "print" else "#7c8ea3"
+        data_arrow = "#1c6b38" if theme == "print" else "#3f9c5f"
         return (
             "  <defs>\n"
             '    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" '
             'markerWidth="7" markerHeight="7" orient="auto-start-reverse">\n'
-            '      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7c8ea3"/>\n'
+            f'      <path d="M 0 0 L 10 5 L 0 10 z" fill="{arrow}"/>\n'
             "    </marker>\n"
             '    <marker id="arrow-data" viewBox="0 0 10 10" refX="9" refY="5" '
             'markerWidth="7" markerHeight="7" orient="auto-start-reverse">\n'
-            '      <path d="M 0 0 L 10 5 L 0 10 z" fill="#3f9c5f"/>\n'
+            f'      <path d="M 0 0 L 10 5 L 0 10 z" fill="{data_arrow}"/>\n'
             "    </marker>\n"
             "  </defs>"
         )

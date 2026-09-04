@@ -1876,3 +1876,18 @@
   .layer-toggles { overflow-x: auto; flex-wrap: nowrap; }
   .chip--layer { white-space: nowrap; }
 }
+
+/* ==================================================================
+   Export menu
+   ================================================================== */
+.menu--export { min-width: 268px; max-height: 70dvh; overflow-y: auto; }
+
+.menu__item--export { align-items: flex-start; padding-block: var(--space-2); }
+.menu__item--export svg { margin-top: 2px; flex: none; }
+
+.menu__item-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.menu__item-hint {
+  font-size: var(--text-2xs);
+  color: var(--fg-faint);
+  line-height: 1.3;
+}

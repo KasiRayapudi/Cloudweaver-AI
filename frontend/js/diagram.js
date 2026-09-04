@@ -11,6 +11,7 @@
  */
 
 import { createFilters, renderFilterBar } from "./diagram-filters.js";
+import { api } from "./api.js";
 import { clear, downloadText, el, icon, toast } from "./ui.js";
 
 const MIN_ZOOM = 0.15;
@@ -371,26 +372,52 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
 
   /* ---------------- exports ---------------- */
 
-  function exportSvg() {
-    downloadText(result.diagram.svg, `${result.summary.name}-architecture.svg`, "image/svg+xml");
-    toast("SVG saved", { variant: "success" });
+  // Every export starts from a themed SVG rendered by the backend, not from
+  // the copy on screen. The on-screen document carries a prefers-color-scheme
+  // query; exporting it would hand someone a figure that inverts itself on a
+  // dark-themed machine, which is a defect in a paper rather than a taste.
+  async function themedSvg(theme, transparent = false) {
+    return api.exportDiagram(result.spec.prompt, { theme, transparent });
   }
 
-  function rasterise(scale = 2) {
+  async function exportSvg(theme) {
+    try {
+      const svg = await themedSvg(theme);
+      downloadText(svg, `${result.summary.name}-${theme}.svg`, "image/svg+xml");
+      toast(`SVG saved (${theme})`, { variant: "success" });
+    } catch (error) {
+      toast("SVG export failed", { message: error.message, variant: "error" });
+    }
+  }
+
+  /**
+   * Rasterise the themed SVG at a given scale.
+   *
+   * Done in the browser because a server-side rasteriser means a native
+   * dependency — the same reason this project has no Graphviz — which would
+   * also break the serverless deployment. The vector source comes from the
+   * backend, so only the pixels are produced here.
+   */
+  function rasterise(svgText, scale, transparent) {
     return new Promise((resolve, reject) => {
       const { width, height } = contentSize();
       const image = new Image();
       const url = URL.createObjectURL(
-        new Blob([result.diagram.svg], { type: "image/svg+xml;charset=utf-8" }),
+        new Blob([svgText], { type: "image/svg+xml;charset=utf-8" }),
       );
       image.onload = () => {
-        const canvas = el("canvas", { width: width * scale, height: height * scale });
+        const canvas = el("canvas", {
+          width: Math.round(width * scale),
+          height: Math.round(height * scale),
+        });
         const context = canvas.getContext("2d");
-        // The exported SVG paints its own background, but a transparent PNG
-        // dropped into a light document would be unreadable, so fill first.
-        context.fillStyle = getComputedStyle(document.body).backgroundColor;
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        context.scale(scale, scale);
+        if (!transparent) {
+          // The SVG paints its own ground, but a transparent PNG dropped into
+          // a light document would be unreadable, so fill first.
+          context.fillStyle = svgText.includes('fill: #0f141b') ? "#0f141b" : "#ffffff";
+          context.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        context.setTransform(scale, 0, 0, scale, 0, 0);
         context.drawImage(image, 0, 0);
         URL.revokeObjectURL(url);
         resolve(canvas);
@@ -400,87 +427,124 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
     });
   }
 
-  async function exportPng() {
+  async function exportPng(theme, scale, transparent = false) {
     try {
-      const canvas = await rasterise(2);
+      const svg = await themedSvg(theme, transparent);
+      const canvas = await rasterise(svg, scale, transparent);
       canvas.toBlob((png) => {
+        if (!png) { toast("PNG export failed", { variant: "error" }); return; }
+        const suffix = transparent ? "transparent" : theme;
         const link = el("a", {
           href: URL.createObjectURL(png),
-          download: `${result.summary.name}-architecture.png`,
+          download: `${result.summary.name}-${suffix}@${scale}x.png`,
         });
         document.body.append(link);
         link.click();
         link.remove();
-        toast("PNG saved", { variant: "success" });
+        toast(`PNG saved at ${scale}×`, {
+          message: `${canvas.width}×${canvas.height} pixels`,
+          variant: "success",
+        });
       }, "image/png");
-    } catch {
-      toast("PNG export failed", { message: "Save the SVG instead.", variant: "error" });
+    } catch (error) {
+      toast("PNG export failed", {
+        message: "Save the SVG instead — it is vector at any size.",
+        variant: "error",
+      });
     }
   }
 
   /**
-   * PDF export goes through the browser's print pipeline.
+   * The architecture report, opened in a print window.
    *
-   * Hand-rolling a PDF would mean embedding a raster and losing the vector
-   * output entirely; printing keeps the diagram sharp at any zoom and adds no
-   * dependency. The one cost is that the user picks "Save as PDF" in the
-   * dialog rather than getting a file immediately, which the button label
-   * says plainly.
+   * Printing keeps text selectable and the diagram vector at any zoom. A
+   * hand-rolled PDF would embed a raster and lose both, and would need a
+   * dependency this project has deliberately avoided.
    */
-  function exportPdf() {
-    const frame = el("iframe", {
-      style: { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0" },
-      "aria-hidden": "true",
-    });
-    document.body.append(frame);
+  async function exportReport() {
+    try {
+      const document_ = await api.exportReport(result.spec.prompt);
+      const frame = el("iframe", {
+        style: { position: "fixed", right: "0", bottom: "0",
+                 width: "0", height: "0", border: "0" },
+        "aria-hidden": "true",
+      });
+      document.body.append(frame);
+      frame.contentDocument.open();
+      frame.contentDocument.write(document_);
+      frame.contentDocument.close();
 
-    const doc = frame.contentDocument;
-    doc.open();
-    doc.write(
-      `<!DOCTYPE html><html><head><title>${result.summary.name} architecture</title>` +
-      `<style>@page{size:landscape;margin:12mm}` +
-      `body{margin:0;display:grid;place-items:center;height:100vh}` +
-      `svg{max-width:100%;max-height:100%}</style></head><body>` +
-      result.diagram.svg +
-      `</body></html>`,
-    );
-    doc.close();
+      frame.contentWindow.addEventListener("afterprint", () => frame.remove(), { once: true });
+      setTimeout(() => {
+        frame.contentWindow.focus();
+        frame.contentWindow.print();
+        setTimeout(() => frame.isConnected && frame.remove(), 60000);
+      }, 250);
 
-    frame.contentWindow.addEventListener("afterprint", () => frame.remove(), { once: true });
-    setTimeout(() => {
-      frame.contentWindow.focus();
-      frame.contentWindow.print();
-      // Some browsers never fire afterprint; clean up regardless.
-      setTimeout(() => frame.isConnected && frame.remove(), 60000);
-    }, 120);
+      toast("Report ready", {
+        message: 'Choose "Save as PDF" in the print dialog for a vector file.',
+        variant: "info",
+      });
+    } catch (error) {
+      toast("Report failed", { message: error.message, variant: "error" });
+    }
+  }
 
-    toast("Print dialog opened", {
-      message: 'Choose "Save as PDF" as the destination for a vector file.',
-      variant: "info",
-    });
+  /** The report in a tab, for reading rather than printing. */
+  async function openReport() {
+    try {
+      const document_ = await api.exportReport(result.spec.prompt);
+      const blob = new Blob([document_], { type: "text/html" });
+      window.open(URL.createObjectURL(blob), "_blank", "noopener");
+    } catch (error) {
+      toast("Report failed", { message: error.message, variant: "error" });
+    }
   }
 
   /* ---------------- toolbar ---------------- */
 
   const zoomLabel = el("span", { class: "zoom-label tabular", text: "100%" });
 
-  const exportMenu = el("div", { class: "menu", hidden: true, role: "menu" }, [
-    el("button", { class: "menu__item", role: "menuitem", type: "button",
-      onClick: () => { closeMenu(); exportPng(); } },
-      [icon("download", 14), el("span", { text: "PNG image" })]),
-    el("button", { class: "menu__item", role: "menuitem", type: "button",
-      onClick: () => { closeMenu(); exportSvg(); } },
-      [icon("download", 14), el("span", { text: "SVG vector" })]),
-    el("button", { class: "menu__item", role: "menuitem", type: "button",
-      onClick: () => { closeMenu(); exportPdf(); } },
-      [icon("download", 14), el("span", { text: "PDF via print…" })]),
-    el("button", { class: "menu__item", role: "menuitem", type: "button",
-      onClick: () => {
-        closeMenu();
-        downloadText(result.diagram.mermaid, `${result.summary.name}.mmd`);
-        toast("Mermaid saved", { variant: "success" });
-      } },
-      [icon("code", 14), el("span", { text: "Mermaid source" })]),
+  function menuItem(label, hint, handler) {
+    return el("button", {
+      class: "menu__item menu__item--export",
+      role: "menuitem",
+      type: "button",
+      onClick: () => { closeMenu(); handler(); },
+    }, [
+      icon("download", 14),
+      el("span", { class: "menu__item-body" }, [
+        el("span", { text: label }),
+        hint && el("span", { class: "menu__item-hint", text: hint }),
+      ]),
+    ]);
+  }
+
+  const exportMenu = el("div", { class: "menu menu--export", hidden: true, role: "menu" }, [
+    el("div", { class: "menu__label", text: "Document" }),
+    menuItem("Architecture report", "Print or save as PDF", exportReport),
+    menuItem("Open report in a tab", "Read without printing", openReport),
+
+    el("div", { class: "menu__separator", role: "separator" }),
+    el("div", { class: "menu__label", text: "Vector" }),
+    menuItem("SVG · light", "For documents and slides", () => exportSvg("light")),
+    menuItem("SVG · dark", "For dark presentations", () => exportSvg("dark")),
+    menuItem("SVG · print", "High contrast, greyscale-safe", () => exportSvg("print")),
+
+    el("div", { class: "menu__separator", role: "separator" }),
+    el("div", { class: "menu__label", text: "Image" }),
+    menuItem("PNG · 2×", "Screens and slides", () => exportPng("light", 2)),
+    menuItem("PNG · 4×", "Print quality, about 300 dpi", () => exportPng("light", 4)),
+    menuItem("PNG · dark 2×", "For dark presentations", () => exportPng("dark", 2)),
+    menuItem("PNG · transparent", "Composites onto any ground",
+             () => exportPng("light", 3, true)),
+
+    el("div", { class: "menu__separator", role: "separator" }),
+    el("div", { class: "menu__label", text: "Source" }),
+    menuItem("Mermaid", "Text, for version control", () => {
+      downloadText(result.diagram.mermaid, `${result.summary.name}.mmd`);
+      toast("Mermaid saved", { variant: "success" });
+    }),
   ]);
 
   const exportButton = el("button", {
