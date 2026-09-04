@@ -10,6 +10,7 @@
  * calculation can drift from what was actually drawn.
  */
 
+import { createFilters, renderFilterBar } from "./diagram-filters.js";
 import { clear, downloadText, el, icon, toast } from "./ui.js";
 
 const MIN_ZOOM = 0.15;
@@ -186,6 +187,10 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
       event.preventDefault(); zoomTo(state.zoom / 1.2);
     } else if (event.key === "0") {
       event.preventDefault(); fit();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      filters.reset();
+      filterBar.paintFocus();
     }
   });
 
@@ -212,7 +217,18 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         selectNode(group);
+      } else if (event.key === "f") {
+        event.preventDefault();
+        filters.focus(group.dataset.resourceId);
+        filterBar.paintFocus();
       }
+    });
+    // Double click focuses the dependency neighbourhood, which is the
+    // question a reader usually has next after "what is this?".
+    group.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      filters.focus(group.dataset.resourceId);
+      filterBar.paintFocus();
     });
   }
 
@@ -221,6 +237,33 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
     const group = stage.querySelector(`[data-resource-id="${CSS.escape(resourceId)}"]`);
     if (group) selectNode(group);
   }
+
+  /* ---------------- search, filters and focus ---------------- */
+
+  const filters = createFilters({
+    stage,
+    result,
+    onFocus: (id) => {
+      // Focusing scrolls the subject into view; it never moves it.
+      const group = stage.querySelector(`[data-resource-id="${CSS.escape(id)}"]`);
+      if (!group) return;
+      const box = group.getBBox?.();
+      if (!box) return;
+      const area = stage.getBoundingClientRect();
+      state.x = area.width / 2 - (box.x + box.width / 2) * state.zoom;
+      state.y = area.height / 2 - (box.y + box.height / 2) * state.zoom;
+      userAdjusted = true;
+      apply();
+    },
+  });
+
+  const filterBar = renderFilterBar(filters, {
+    onSelectResource: (resource) => {
+      const group = stage.querySelector(
+        `[data-resource-id="${CSS.escape(resource.id)}"]`);
+      if (group) selectNode(group);
+    },
+  });
 
   /* ---------------- mini map ---------------- */
 
@@ -244,7 +287,20 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
     clone.style.width = `${width}px`;
     clone.style.height = `${height}px`;
     clone.removeAttribute("tabindex");
+    // The clone is decoration. Stripping the identifying attributes keeps it
+    // out of every query that looks for a node or an edge -- without this the
+    // filters bound to whichever copy the DOM returned last, which was the
+    // mini map, and the real diagram never dimmed.
     for (const node of clone.querySelectorAll("[tabindex]")) node.removeAttribute("tabindex");
+    for (const node of clone.querySelectorAll("[data-resource-id]")) {
+      node.removeAttribute("data-resource-id");
+      node.removeAttribute("role");
+      node.removeAttribute("aria-label");
+    }
+    for (const path of clone.querySelectorAll("[data-from]")) {
+      path.removeAttribute("data-from");
+      path.removeAttribute("data-to");
+    }
 
     const inner = el("div", { class: "minimap__inner" }, [clone]);
     inner.style.transform = `scale(${minimapScale})`;
@@ -499,7 +555,9 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
   }
 
   stage.append(minimap);
-  const wrapper = el("div", { class: "diagram" }, [toolbar, stage, mermaidView]);
+  const wrapper = el("div", { class: "diagram" }, [
+    toolbar, filterBar.element, stage, mermaidView,
+  ]);
 
   // Built once the SVG exists; the frame is positioned by the first fit.
   if (svg) buildMinimap();
@@ -522,6 +580,7 @@ export function createDiagramViewer(result, { onSelectResource } = {}) {
     fit,
     centre,
     highlight,
+    filters,
     destroy: () => {
       observer.disconnect();
       window.removeEventListener("resize", onWindowResize);

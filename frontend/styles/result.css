@@ -1748,3 +1748,131 @@
   .chat { height: min(76dvh, 640px); }
   .chat__bubble { max-width: 100%; }
 }
+
+/* ==================================================================
+   Diagram filters, search and focus
+   ==================================================================
+   Filtering dims rather than hides. A removed node takes its edges
+   with it and leaves connectors pointing at nothing; a dimmed one
+   keeps the shape of the architecture visible behind the matches.
+   ================================================================== */
+.filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-surface);
+}
+
+.filter-bar__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.filter-search { position: relative; }
+.filter-search .field { min-width: 210px; }
+
+.filter-count {
+  font-size: var(--text-2xs);
+  color: var(--fg-subtle);
+  white-space: nowrap;
+}
+
+.filter-results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: var(--z-drawer);
+  min-width: 260px;
+  padding: var(--space-1);
+  background: var(--bg-surface-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+.filter-results[hidden] { display: none; }
+
+.filter-result {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 28px;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-xs);
+  text-align: left;
+}
+.filter-result:hover { background: var(--bg-hover); }
+.filter-result__name { flex: 1; font-size: var(--text-xs); }
+.filter-result__id { font-size: 10px; color: var(--fg-faint); }
+
+.layer-toggles { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+
+.chip--layer {
+  padding: 2px var(--space-2);
+  font-size: var(--text-2xs);
+  min-height: 24px;
+}
+.chip--layer[aria-pressed="false"] {
+  opacity: 0.45;
+  text-decoration: line-through;
+  background: var(--bg-subtle);
+}
+
+.layer-dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+
+.chip--focus {
+  background: var(--bg-brand-subtle);
+  border-color: var(--border-brand);
+  color: var(--fg-brand);
+  font-weight: 560;
+}
+.chip--focus[hidden] { display: none; }
+
+/* ---- what filtering does to the drawing ---- */
+.diagram-stage .node-group,
+.diagram-stage path.edge {
+  transition: opacity var(--duration-base) var(--ease-out);
+}
+
+.diagram-stage .node-group.is-dimmed { opacity: 0.14; pointer-events: none; }
+.diagram-stage path.edge.is-dimmed { opacity: 0.08; }
+
+.diagram-stage .node-group.is-match rect.node {
+  stroke-width: 3;
+  filter: drop-shadow(0 2px 8px rgb(15 125 115 / 0.45));
+}
+
+.diagram-stage .node-group.is-focus-root rect.node {
+  stroke-width: 3.5;
+  filter: drop-shadow(0 3px 12px rgb(15 125 115 / 0.55));
+}
+
+/* The focused node's own edges are drawn heavier and animate, so the
+   direction of a dependency is visible rather than inferred. */
+.diagram-stage path.edge.is-focus-edge {
+  stroke-width: 2.6;
+  stroke-dasharray: 7 5;
+  animation: edge-flow 1.1s linear infinite;
+}
+@keyframes edge-flow {
+  to { stroke-dashoffset: -24; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagram-stage path.edge.is-focus-edge { animation: none; }
+}
+
+/* While anything is filtered the boundaries recede, so the matches are
+   what the eye lands on. */
+.diagram-stage.is-filtered .group-box { opacity: 0.35; }
+.diagram-stage.is-filtered .group-label,
+.diagram-stage.is-filtered .group-sublabel { opacity: 0.4; }
+
+@media (max-width: 720px) {
+  .layer-toggles { overflow-x: auto; flex-wrap: nowrap; }
+  .chip--layer { white-space: nowrap; }
+}

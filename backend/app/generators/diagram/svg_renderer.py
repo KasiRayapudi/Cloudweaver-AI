@@ -103,7 +103,22 @@ def _css() -> str:
     .band {{ font: 600 10px 'Segoe UI', system-ui, sans-serif; fill: #94a3b8;
              letter-spacing: .08em; }}
     .group-box {{ fill: none; stroke: #94a3b8; stroke-width: 1.4; stroke-dasharray: 7 5; }}
-    .group-label {{ font: 600 11px 'Segoe UI', system-ui, sans-serif; fill: #64748b; }}
+    .group-region {{ stroke: #b0771f; stroke-width: 1.6; stroke-dasharray: none;
+                     fill: #fbf7ef; fill-opacity: .5; }}
+    .group-vpc {{ stroke: #5b7cc4; stroke-width: 1.6; stroke-dasharray: none;
+                  fill: #f2f6fd; fill-opacity: .55; }}
+    .group-public {{ stroke: #3f9c5f; stroke-dasharray: 6 4; fill: #f1f9f4;
+                     fill-opacity: .5; }}
+    .group-private {{ stroke: #7d8fa5; stroke-dasharray: 6 4; fill: #f4f6f9;
+                      fill-opacity: .5; }}
+    .group-label {{ font: 600 11px 'Inter', 'Segoe UI', system-ui, sans-serif;
+                    fill: #64748b; letter-spacing: .02em; }}
+    .group-label-region {{ fill: #8a5c12; }}
+    .group-label-vpc {{ fill: #3f5c9c; }}
+    .group-label-public {{ fill: #2c7346; }}
+    .group-label-private {{ fill: #55677d; }}
+    .group-sublabel {{ font: 400 10px 'Inter', 'Segoe UI', system-ui, sans-serif;
+                       fill: #94a3b8; }}
     .edge {{ fill: none; stroke: #7c8ea3; stroke-width: 1.6; }}
     .edge.data {{ stroke: #3f9c5f; }}
     .edge.dep {{ stroke: #b0bccb; }}
@@ -116,7 +131,16 @@ def _css() -> str:
       .subtitle {{ fill: #93a3b6; }}
       .band {{ fill: #6b7c91; }}
       .group-box {{ stroke: #47566a; }}
+      .group-region {{ stroke: #8a6a2f; fill: #1c1810; fill-opacity: .55; }}
+      .group-vpc {{ stroke: #46608f; fill: #121821; fill-opacity: .6; }}
+      .group-public {{ stroke: #35704a; fill: #101a14; fill-opacity: .5; }}
+      .group-private {{ stroke: #414f61; fill: #141920; fill-opacity: .5; }}
       .group-label {{ fill: #93a3b6; }}
+      .group-label-region {{ fill: #c9a765; }}
+      .group-label-vpc {{ fill: #8fb0e0; }}
+      .group-label-public {{ fill: #7fc79a; }}
+      .group-label-private {{ fill: #93a3b6; }}
+      .group-sublabel {{ fill: #6b7c91; }}
       .edge {{ stroke: #63768c; }}
       .edge.dep {{ stroke: #3c4a5c; }}
       .edge-label {{ fill: #7b8da2; }}
@@ -143,16 +167,25 @@ class SvgRenderer:
             f'  <text class="subtitle" x="{20}" y="{45}">{escape(layout.subtitle)}</text>',
         ]
 
-        for group in layout.groups:
+        # Painted in ascending depth so an inner boundary is never hidden
+        # behind the one containing it.
+        for group in sorted(layout.groups, key=lambda g: g.depth):
             parts.append(
-                f'  <rect class="group-box" x="{group.x:.1f}" y="{group.y:.1f}" '
-                f'width="{group.w:.1f}" height="{group.h:.1f}" rx="12"/>'
+                f'  <rect class="group-box group-{group.style}" '
+                f'x="{group.x:.1f}" y="{group.y:.1f}" '
+                f'width="{group.w:.1f}" height="{group.h:.1f}" rx="14"/>'
             )
             parts.append(
-                f'  <text class="group-label" x="{group.x + 12:.1f}" '
-                f'y="{group.y + 17:.1f}">{escape(group.label)} - '
-                f"{escape(group.sublabel)}</text>"
+                f'  <text class="group-label group-label-{group.style}" '
+                f'x="{group.x + 14:.1f}" y="{group.y + 18:.1f}">'
+                f"{escape(group.label)}</text>"
             )
+            if group.sublabel:
+                offset = 14 + len(group.label) * 6.6 + 10
+                parts.append(
+                    f'  <text class="group-sublabel" x="{group.x + offset:.1f}" '
+                    f'y="{group.y + 18:.1f}">{escape(group.sublabel)}</text>'
+                )
 
         for label, y in layout.band_labels:
             parts.append(
@@ -227,8 +260,12 @@ class SvgRenderer:
         marker = "arrow-data" if style == "data" else "arrow"
         path = SvgRenderer._rounded_path(edge.points)
         dash_attr = f' stroke-dasharray="{dash}"' if dash else ""
+        # Endpoint ids let an interactive viewer fade an edge with the nodes
+        # it joins. Additive: no geometry or colour changes.
         out = (
             f'  <path class="{cls}" d="{path}"{dash_attr} '
+            f'data-from="{escape(edge.source)}" data-to="{escape(edge.target)}" '
+            f'data-kind="{escape(edge.kind)}" '
             f'marker-end="url(#{marker})"/>'
         )
         if edge.label:
